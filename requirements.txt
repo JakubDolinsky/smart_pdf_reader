@@ -1,0 +1,14 @@
+# PDF text extraction for chunking
+pymupdf>=1.23.0
+
+# Vector DB for RAG embeddings
+qdrant-client>=1.7.0,<2.0.0
+
+# Embeddings (multilingual-e5-small)
+sentence-transformers>=2.2.0,<3.0.0
+
+# LLM (Mistral 7B Instruct via Ollama)
+ollama>=0.3.0
+
+# Testing
+pytest>=7.0.0,<9.0.0
