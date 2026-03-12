@@ -254,7 +254,7 @@ class PdfChunker:
         last_chapter = ""
 
         def flush() -> None:
-            nonlocal current, current_token_count, last_chapter
+            nonlocal current, current_token_count
             if not current:
                 return
             texts = [p[1] for p in current]
@@ -273,7 +273,6 @@ class PdfChunker:
                 overlap_remaining -= tc
             current = list(reversed(overlap_paras))
             current_token_count = sum(self._token_count(p[1]) for p in current)
-            last_chapter = ""
 
         for (page, para, chapter) in paragraphs_with_chapter:
             if chapter:
@@ -296,7 +295,6 @@ class PdfChunker:
                     else:
                         start += len(segment)
                     specs.append((" ".join(segment), page, page, last_chapter))
-                    last_chapter = ""
                     if start < len(words):
                         overlap_start = start
                         while overlap_start > 0 and self._token_count(" ".join(words[overlap_start:start])) < self._overlap_tokens:

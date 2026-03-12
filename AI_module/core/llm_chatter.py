@@ -1,6 +1,7 @@
 """
 LLM chatter: build RAG prompt from reranking chunks and user query, then call LLM client for answer.
 Sources from chunks (e.g. RerankingService.rerank output); prompt template from config.
+Supports optional conversation history (last 4 messages: 2 user + 2 assistant).
 """
 
 from __future__ import annotations
@@ -15,10 +16,13 @@ if TYPE_CHECKING:
 # Chunk-like: has .payload (dict)
 ChunkLike = Any
 
+# One message in conversation history: {"role": "user"|"assistant", "content": str}
+HistoryMessage = dict[str, str]
+
 # Returned by chat() when query/chunks/metadata are incomplete; LLM is not called.
 PROMPT_INCOMPLETE_RESPONSE: str = (
     "The prompt is not complete and the LLM was not called. "
-    "Please provide a non-empty question and at least one source chunk with complete metadata (text, source PDF name, chapter, and page)."
+    "Please provide a non-empty question and at least one source chunk with complete metadata (text, source PDF name, and at least chapter or page)."
 )
 
 
@@ -64,8 +68,9 @@ def _is_non_empty(value: Any) -> bool:
 
 def _chunk_has_complete_metadata(payload: dict[str, Any]) -> bool:
     """
-    True if payload has non-empty text, source (PDF name), chapter, and page (or page_start).
-    Required for reliable citations and LLM response.
+    True if payload has non-empty text, source (PDF name), and at least one of:
+    chapter, or page (or page_start). When chapter cannot be detected, chunks with
+    page or page_start are still used for citations.
     """
     if not isinstance(payload, dict):
         return False
@@ -76,10 +81,10 @@ def _chunk_has_complete_metadata(payload: dict[str, Any]) -> bool:
     if not _is_non_empty(source):
         return False
     chapter = payload.get("chapter")
-    if not _is_non_empty(chapter):
-        return False
     page = payload.get("page") if payload.get("page") is not None else payload.get("page_start")
-    if not _is_non_empty(page):
+    has_chapter = _is_non_empty(chapter)
+    has_page = _is_non_empty(page)
+    if not has_chapter and not has_page:
         return False
     return True
 
@@ -88,8 +93,8 @@ def _filter_chunks_with_complete_metadata(
     chunks: list[ChunkLike] | dict[str, Any],
 ) -> list[ChunkLike]:
     """
-    Return only chunks whose payload has complete metadata (text, source, chapter, page).
-    Incomplete chunks are excluded so the LLM can be called with at least one reliable source.
+    Return only chunks whose payload has complete metadata (text, source, and at least chapter or page).
+    Chunks with page/page_start but empty chapter are included when chapter cannot be detected.
     """
     chunk_list = _chunks_list(chunks)
     result = []
@@ -104,6 +109,29 @@ def _get_llm_client() -> "LlmClient":
     """Lazy import to avoid loading ollama at module load."""
     from AI_module.infra_layer.llm_client import LlmClient
     return LlmClient()
+
+
+def _format_history(history: list[HistoryMessage] | None) -> str:
+    """
+    Format the last 4 messages (2 user + 2 assistant) for the prompt.
+    Each message: {"role": "user"|"assistant", "content": str}.
+    Returns empty string if history is empty or None.
+    """
+    if not history:
+        return ""
+    # Take last 4 messages in order (typically 2 user + 2 assistant)
+    last_four = history[-4:]
+    lines: list[str] = []
+    for msg in last_four:
+        if not isinstance(msg, dict):
+            continue
+        role = (msg.get("role") or "").strip().lower()
+        content = (msg.get("content") or "").strip()
+        if role == "user":
+            lines.append(f"User: {content}")
+        elif role == "assistant":
+            lines.append(f"Assistant: {content}")
+    return "\n".join(lines) if lines else ""
 
 
 class LLMChatter:
@@ -153,22 +181,25 @@ class LLMChatter:
         query: str,
         *,
         template: str | None = None,
+        history: list[HistoryMessage] | None = None,
     ) -> str:
         """
-        Create the full LLM prompt from reranking chunks and the user's question.
+        Create the full LLM prompt from reranking chunks, optional history, and the user's question.
 
         Args:
             chunks: List of Chunk (or dict with "chunks" key) from RerankingService.rerank.
             query: The user's question.
             template: Optional override for the prompt template (default: LM_PROMPT_TEMPLATE).
+            history: Optional list of {"role": "user"|"assistant", "content": str}; last 4 messages are included.
 
         Returns:
-            Full prompt string with Sources and Question filled in.
+            Full prompt string with optional history, Sources, and Question filled in.
         """
         context = self.build_context(chunks)
         query_clean = (query or "").strip()
+        history_str = _format_history(history)
         tpl = template if template is not None else LM_PROMPT_TEMPLATE
-        return tpl.format(context=context, query=query_clean)
+        return tpl.format(history=history_str, context=context, query=query_clean)
 
     def chat(
         self,
@@ -176,17 +207,17 @@ class LLMChatter:
         query: str,
         *,
         template: str | None = None,
+        history: list[HistoryMessage] | None = None,
     ) -> str:
         """
-        Build prompt from chunks and query, send it to the LLM client, return the answer.
-        Chunks with incomplete metadata (missing or empty text, source, chapter, or page) are excluded.
-        If query is empty/None or no chunk with complete metadata remains, the LLM is not called
-        and PROMPT_INCOMPLETE_RESPONSE is returned.
+        Build prompt from chunks, optional history, and query; send to the LLM client, return the answer.
+        Chunks with incomplete metadata are excluded. History: last 4 messages (2 user + 2 assistant).
 
         Args:
             chunks: List of Chunk (or dict with "chunks" key) from RerankingService.rerank.
             query: The user's question.
-            template: Optional override for the prompt template (default: LM_PROMPT_TEMPLATE).
+            template: Optional override for the prompt template.
+            history: Optional conversation history (list of {"role", "content"}); last 4 messages included.
 
         Returns:
             The LLM's answer string, or PROMPT_INCOMPLETE_RESPONSE if query is empty or no chunk has complete metadata.
@@ -196,5 +227,5 @@ class LLMChatter:
         filtered = _filter_chunks_with_complete_metadata(chunks)
         if not filtered:
             return PROMPT_INCOMPLETE_RESPONSE
-        prompt = self.create_prompt(filtered, query, template=template)
+        prompt = self.create_prompt(filtered, query, template=template, history=history)
         return self._get_client().answer(prompt)

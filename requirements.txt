@@ -10,5 +10,9 @@ sentence-transformers>=2.2.0,<3.0.0
 # LLM (Mistral 7B Instruct via Ollama)
 ollama>=0.3.0
 
+# FastAPI transfer layer (AI_api) for .NET REST API
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+
 # Testing
 pytest>=7.0.0,<9.0.0

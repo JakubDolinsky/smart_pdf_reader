@@ -70,7 +70,7 @@ RERANK_TOP_K: int = 3
 PDF_INPUT_DIR = PROJECT_ROOT / "data" / "pdfs"
 
 CHUNK_MAX_TOKENS: int = 256
-CHUNK_OVERLAP_TOKENS: int = 50
+CHUNK_OVERLAP_TOKENS: int = 70
 
 IS_MULTICOLUMN: bool = False
 CHAPTER_FONT_SIZE_MULTIPLIER: float = 1.25
@@ -92,6 +92,9 @@ Rules:
 - Use only the information from the sources.
 - Cite the source after each statement using the format (Chapter, Page).
 - If the answer is not in the sources, say: "The information is not available in the provided document."
+
+Conversation history (last 2 user questions and 2 assistant answers, if any):
+{history}
 
 Sources:
 {context}

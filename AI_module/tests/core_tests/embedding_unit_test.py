@@ -122,6 +122,34 @@ def test_embed_query_output_ready_for_search_similar(mock_client):
     assert isinstance(vector, list) and len(vector) == 384 and all(isinstance(x, float) for x in vector)
 
 
+def test_embed_query_with_history_and_reference_word_appends_first_message(mock_client):
+    """When history is non-empty and query contains a reference word (e.g. 'that'), first message content is appended for embedding."""
+    mock_client.embed_query.return_value = [0.1] * 384
+    service = EmbeddingService(client=mock_client)
+    history = [{"role": "assistant", "content": "Paris is the capital of France."}]
+    service.embed_query("What about that?", history=history)
+    mock_client.embed_query.assert_called_once_with(
+        "What about that? Paris is the capital of France."
+    )
+
+
+def test_embed_query_with_history_no_reference_word_uses_query_only(mock_client):
+    """When history is provided but query has no reference word, client is called with query only."""
+    mock_client.embed_query.return_value = [0.1] * 384
+    service = EmbeddingService(client=mock_client)
+    history = [{"role": "user", "content": "What is the capital?"}]
+    service.embed_query("What is the population?", history=history)
+    mock_client.embed_query.assert_called_once_with("What is the population?")
+
+
+def test_embed_query_with_empty_history_uses_query_only(mock_client):
+    """When history is empty list, no appending."""
+    mock_client.embed_query.return_value = [0.1] * 384
+    service = EmbeddingService(client=mock_client)
+    service.embed_query("What is this?", history=[])
+    mock_client.embed_query.assert_called_once_with("What is this?")
+
+
 def main():
     return sys.exit(pytest.main([__file__, "-v"]))
 
