@@ -207,6 +207,30 @@ marimo/_lsp/
 __marimo__/
 
 # ---------------------------------------------------------------------------
+# .NET / Visual Studio / C#
+# ---------------------------------------------------------------------------
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+project.lock.json
+project.fragment.lock.json
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+packages/
+*.nupkg
+*.snupkg
+.nuget/
+.vscode/
+
+# ---------------------------------------------------------------------------
 # Project-specific: logs, ingestion data, vector DB storage
 # ---------------------------------------------------------------------------
 
@@ -218,4 +242,4 @@ data/
 AI_module/data/
 
 # Optional: ignore all PDFs in repo (uncomment if you never want to track PDFs)
-# *.pdf
+*.pdf
