@@ -2,6 +2,7 @@ using Data.DataContext;
 using Data.Models;
 using Data.Repository;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DbTests;
@@ -22,7 +23,7 @@ public class RepositoryUnitTests : IAsyncLifetime
             .Options;
         _context = new ChatHistoryDbContext(options);
         await _context.Database.EnsureCreatedAsync();
-        _repository = new Repository(_context, MaxMessageCount);
+        _repository = new Repository(_context, MaxMessageCount, NullLogger<Repository>.Instance);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -107,9 +108,9 @@ public class RepositoryUnitTests : IAsyncLifetime
         Assert.Empty(list);
     }
 
-    private static ChatMessage NewMessage(ChatRole role, string content, DateTime? createdAt = null)
+    private static DbChatMessage NewMessage(ChatRole role, string content, DateTime? createdAt = null)
     {
-        return new ChatMessage
+        return new DbChatMessage
         {
             Role = role,
             Content = content,

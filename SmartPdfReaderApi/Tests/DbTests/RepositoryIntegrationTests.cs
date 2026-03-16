@@ -3,6 +3,7 @@ using Data.Models;
 using Data.Repository;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DbTests;
@@ -33,8 +34,8 @@ public class RepositoryIntegrationTests : IAsyncLifetime
             .Options;
         _context = new ChatHistoryDbContext(options);
         await _context.Database.CanConnectAsync();
-        _repository = new Repository(_context, MaxMessageCount);
-        _cleanup = new DbCleanup(_context);
+        _repository = new Repository(_context, MaxMessageCount, NullLogger<Repository>.Instance);
+        _cleanup = new DbCleanup(_context, NullLogger<DbCleanup>.Instance);
         await _cleanup.CleanAsync();
     }
 
@@ -101,9 +102,9 @@ public class RepositoryIntegrationTests : IAsyncLifetime
         Assert.Empty(list);
     }
 
-    private static ChatMessage NewMessage(ChatRole role, string content)
+    private static DbChatMessage NewMessage(ChatRole role, string content)
     {
-        return new ChatMessage
+        return new DbChatMessage
         {
             Role = role,
             Content = content,

@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <RootNamespace>DbTests</RootNamespace>
+    <RootNamespace>ServiceTests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.*" />
+    <PackageReference Include="Moq" Version="4.20.*" />
     <PackageReference Include="xunit" Version="2.9.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.*">
       <PrivateAssets>all</PrivateAssets>
@@ -23,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Data\Data.csproj" />
+    <ProjectReference Include="..\..\Service\Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
