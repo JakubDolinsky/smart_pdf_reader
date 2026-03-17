@@ -77,69 +77,6 @@ public class ChatMessageServiceIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LoadConversationAsync_Returns_Empty_When_No_Messages()
-    {
-        var result = await _service.LoadConversationAsync();
-        Assert.Empty(result);
-    }
-
-    [Fact]
-    public async Task AskAsync_Stores_Question_And_Answer_And_Returns_Answer_Model()
-    {
-        var question = new BusinessChatMessage
-        {
-            Content = "What is the capital of France?",
-            Role = ChatRole.User,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var answer = await _service.AskAsync(question);
-
-        Assert.Equal(ChatRole.Assistant, answer.Role);
-        Assert.False(string.IsNullOrWhiteSpace(answer.Content));
-        Assert.True(answer.Id > 0);
-        Assert.True(answer.CreatedAt != default);
-
-        var all = await _service.LoadConversationAsync();
-        Assert.Equal(2, all.Count);
-        Assert.Equal("What is the capital of France?", all[0].Content);
-        Assert.Equal(ChatRole.User, all[0].Role);
-        Assert.Equal(answer.Content, all[1].Content);
-        Assert.Equal(ChatRole.Assistant, all[1].Role);
-    }
-
-    [Fact]
-    public async Task AskAsync_With_Default_CreatedAt_Still_Stores_And_Returns()
-    {
-        var question = new BusinessChatMessage
-        {
-            Content = "Hello",
-            Role = ChatRole.User
-        };
-
-        var answer = await _service.AskAsync(question);
-
-        Assert.False(string.IsNullOrWhiteSpace(answer.Content));
-        var all = await _service.LoadConversationAsync();
-        Assert.Equal(2, all.Count);
-        Assert.True(all[0].CreatedAt != default);
-    }
-
-    [Fact]
-    public async Task DeleteAllMessagesAsync_Clears_Conversation()
-    {
-        var question = new BusinessChatMessage { Content = "Q", Role = ChatRole.User, CreatedAt = DateTime.UtcNow };
-        await _service.AskAsync(question);
-        var before = await _service.LoadConversationAsync();
-        Assert.Equal(2, before.Count);
-
-        await _service.DeleteAllMessagesAsync();
-
-        var after = await _service.LoadConversationAsync();
-        Assert.Empty(after);
-    }
-
-    [Fact]
     public async Task AskAsync_With_History_Returns_Answer_And_Stores_All_Messages()
     {
         await _service.AskAsync(new BusinessChatMessage

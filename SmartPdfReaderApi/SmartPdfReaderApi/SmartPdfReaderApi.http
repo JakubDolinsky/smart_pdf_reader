@@ -1,6 +1,0 @@
-@SmartPdfReaderApi_HostAddress = http://localhost:5064
-
-GET {{SmartPdfReaderApi_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

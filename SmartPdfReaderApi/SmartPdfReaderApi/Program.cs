@@ -43,7 +43,7 @@ builder.Services.AddDbContext<ChatHistoryDbContext>(options =>
             maxRetryDelay: TimeSpan.FromSeconds(10),
             errorNumbersToAdd: null)));
 
-var maxMessageCount = builder.Configuration.GetValue("ChatHistory:MaxMessageCount", 1000);
+var maxMessageCount = builder.Configuration.GetValue("ChatHistory:MaxMessageCount", 100);
 builder.Services.AddScoped<Repository>(sp => new Repository(sp.GetRequiredService<ChatHistoryDbContext>(), maxMessageCount, sp.GetRequiredService<ILogger<Repository>>()));
 builder.Services.AddScoped<IRepository>(sp => sp.GetRequiredService<Repository>());
 
@@ -59,7 +59,30 @@ builder.Services.AddHttpClient<FastApiClient>((sp, client) =>
 builder.Services.AddScoped<IFastApiClient>(sp => sp.GetRequiredService<FastApiClient>());
 builder.Services.AddScoped<ChatMessageService>();
 
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "Smart PDF Reader API",
+        Version = "v1",
+        Description = "API for chat: ask questions (RAG), load messages, clear conversation."
+    });
+});
+
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Smart PDF Reader API v1");
+    });
+}
+
+app.MapControllers();
 
 try
 {
