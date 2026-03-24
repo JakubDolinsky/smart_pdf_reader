@@ -39,7 +39,7 @@ from AI_module.tests.db_bootstrap import (
 def _make_chunk(chunk_id: str, text: str) -> Chunk:
     return Chunk(
         id=chunk_id,
-        payload={"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "chapter": ""},
+        payload={"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "path": ""},
         vector=None,
     )
 

@@ -1,6 +1,6 @@
 """
 Unit tests for chunking.py (PdfChunker, chunk_directory, EmptyPdfError). Extraction mocked; no real PDFs.
-For real-PDF and tokenizer integration tests see chunking_integration_test.py.
+PDF layout / bbox tests: pdf_parsing_unit_test.py. Real-PDF tests: chunking_integration_test.py.
 Run directly: python AI_module/tests/core_tests/chunking_unit_test.py
 Or: python -m pytest AI_module/tests/core_tests/chunking_unit_test.py -v
 """
@@ -22,12 +22,22 @@ if _root not in _resolved_paths:
 import pytest
 from AI_module.core.chunk import Chunk
 from AI_module.core.chunking import (
+    ChapterSegment,
     EmptyPdfError,
     PdfChunker,
-    _remove_duplicate_headers,
     chunk_directory,
     get_embedding_tokenizer,
+    split_into_paragraphs,
 )
+
+
+def _make_segment(path_titles: list[str], body: str, page: int = 1) -> ChapterSegment:
+    leaf = path_titles[-1]
+    parent = path_titles[-2] if len(path_titles) >= 2 else ""
+    s = ChapterSegment(path_titles=list(path_titles), leaf_title=leaf, parent_title=parent)
+    s.body_parts.append(body)
+    s.page_start = s.page_end = page
+    return s
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -60,9 +70,98 @@ def _reconstruct_text_from_chunks(chunker: PdfChunker, chunks: list[Chunk]) -> s
     return " ".join(tokens)
 
 
+def _strip_chunk_headers(text: str) -> str:
+    """Drop ``Chapter:`` and optional ``Section:`` header lines."""
+    lines = text.splitlines()
+    if not lines:
+        return ""
+    i = 0
+    if lines[i].lower().startswith("chapter:"):
+        i += 1
+    if i < len(lines) and lines[i].lower().startswith("section:"):
+        i += 1
+    return "\n".join(lines[i:]).strip()
+
+
+def test_split_into_paragraphs_double_newline_and_pilcrow():
+    text = "First para line.\n\nSecond paragraph\nwith two lines.\n\n¶\nThird block."
+    paras = split_into_paragraphs(text)
+    assert len(paras) >= 2
+    assert "First para" in paras[0]
+    assert any("Second paragraph" in p for p in paras)
+
+
+def test_split_into_paragraphs_tab_starts_new_paragraph():
+    text = "First block line one.\n\tIndented new paragraph line."
+    paras = split_into_paragraphs(text)
+    assert len(paras) == 2
+    assert "First block" in paras[0]
+    assert "Indented new paragraph" in paras[1]
+
+
+def test_chapter_body_joins_blocks_without_extra_paragraph_breaks():
+    """Single newlines between PDF blocks → one paragraph unless \\n\\n, tab, or pilcrow."""
+    s = ChapterSegment(
+        path_titles=["doc", "Ch1"],
+        leaf_title="Ch1",
+        parent_title="doc",
+    )
+    s.body_parts.append("Line a\nLine b")
+    s.body_parts.append("Line c")
+    assert "\n\n" not in s.body
+    paras = split_into_paragraphs(s.body)
+    assert len(paras) == 1
+    assert "Line a" in paras[0] and "Line c" in paras[0]
+
+
+def test_normalize_copyright_and_dot_runs_in_chunk_text():
+    chunker = PdfChunker(max_tokens=256, min_tokens=1, overlap_tokens=0, tokenizer=None)
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        pdf_path = Path(f.name)
+    stem = pdf_path.stem
+    seg = _make_segment(
+        [stem, "Chapter....", "Section © Copyright TEST...."],
+        "Body © Copyright TEST.... end.\n\nNext paragraph TEST.....",
+        1,
+    )
+    try:
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[seg]):
+            chunks = chunker.chunk_document(pdf_path)
+    finally:
+        pdf_path.unlink(missing_ok=True)
+
+    combined = "\n".join(c.payload["text"] for c in chunks)
+    assert "©" not in combined
+    assert "Copyright" not in combined
+    assert "...." not in combined  # no 4+ dot runs should remain
+    assert "TEST..." in combined
+
+
+def test_split_long_text_sentence_safe_and_balanced():
+    """Mandatory splits keep full sentences and avoid tiny tail chunks."""
+    chunker = PdfChunker(max_tokens=35, min_tokens=4, overlap_tokens=0, tokenizer=None)
+    leaf, parent = "Ab", "Cd"
+    sentences = [f"Sentence number {i} has six words." for i in range(1, 13)]
+    text = " ".join(sentences)
+    assert chunker._full_chunk_token_count(leaf, parent, text) > chunker._max_tokens
+
+    pieces = chunker._split_long_text(leaf, parent, text)
+    assert len(pieces) >= 2
+
+    toks = [chunker._full_chunk_token_count(leaf, parent, p) for p in pieces]
+    assert all(t <= chunker._max_tokens for t in toks)
+    assert max(toks) - min(toks) <= 10, f"token lengths too uneven: {toks}"
+
+    # Each piece should end with sentence punctuation and contain whole source sentences.
+    for p in pieces:
+        assert p.strip().endswith((".", "!", "?"))
+    for s in sentences:
+        assert any(s in p for p in pieces), f"missing full sentence: {s}"
+
+
 def test_pdf_chunker_init_valid():
-    c = PdfChunker(max_tokens=100, overlap_tokens=10)
-    assert c._max_tokens == 100 and c._overlap_tokens == 10
+    c = PdfChunker(max_tokens=100, min_tokens=5, overlap_tokens=10)
+    assert c._max_tokens == 100 and c._min_tokens == 5 and c._overlap_tokens == 10
 
 
 def test_pdf_chunker_init_invalid_raises():
@@ -72,6 +171,8 @@ def test_pdf_chunker_init_invalid_raises():
         PdfChunker(max_tokens=50, overlap_tokens=50)
     with pytest.raises(ValueError):
         PdfChunker(max_tokens=10, overlap_tokens=15)
+    with pytest.raises(ValueError, match="min_tokens"):
+        PdfChunker(max_tokens=20, min_tokens=50, overlap_tokens=2)
 
 
 def test_chunk_document_non_pdf_extension_raises():
@@ -91,7 +192,7 @@ def test_chunk_document_empty_pdf_raises():
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=[]):
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[]):
             with pytest.raises(EmptyPdfError, match="no extractable text"):
                 chunker.chunk_document(pdf_path)
     finally:
@@ -100,26 +201,38 @@ def test_chunk_document_empty_pdf_raises():
 
 def test_chunk_document_returns_chunks_with_payload():
     chunker = PdfChunker(max_tokens=256, overlap_tokens=50)
-    mock_paragraphs = [(1, "First block of text.", ""), (1, "Second block.", "")]
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
+    stem = pdf_path.stem
+    seg = _make_segment(
+        [stem, "Part A"],
+        "First block of text.\n\nSecond block.",
+        1,
+    )
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=mock_paragraphs):
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[seg]):
             chunks = chunker.chunk_document(pdf_path)
     finally:
         pdf_path.unlink(missing_ok=True)
     assert len(chunks) >= 1
     for c in chunks:
         assert isinstance(c, Chunk) and c.vector is None and c.id and "text" in c.payload
-        assert c.payload["source"] == pdf_path.stem and "page" in c.payload and "chunk_index" in c.payload and "chapter" in c.payload
+        assert (
+            c.payload["source"] == pdf_path.stem
+            and "page" in c.payload
+            and "chunk_index" in c.payload
+            and "path" in c.payload
+        )
+        assert " - " in c.payload["path"] or c.payload["path"]
 
 
 def test_chunk_document_document_name_used_in_payload():
     chunker = PdfChunker(max_tokens=256, overlap_tokens=50)
+    seg = _make_segment(["my_doc"], "Some text.", 1)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=[(1, "Some text.", "")]):
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[seg]):
             chunks = chunker.chunk_document(pdf_path, document_name="my_doc")
     finally:
         pdf_path.unlink(missing_ok=True)
@@ -173,12 +286,13 @@ def test_chunk_directory_reraises_empty_pdf_when_skip_empty_false():
 
 
 def test_chunker_token_count_fallback_without_tokenizer():
-    chunker = PdfChunker(max_tokens=5, overlap_tokens=1)
-    mock_paragraphs = [(1, "one two three four five six seven", "")]
+    # Header adds several words; limits apply to full chunk (header + body).
+    chunker = PdfChunker(max_tokens=35, min_tokens=1, overlap_tokens=2)
+    seg = _make_segment(["tmp"], "one two three four five six seven", 1)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=mock_paragraphs):
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[seg]):
             chunks = chunker.chunk_document(pdf_path)
         assert len(chunks) >= 1
         assert sum(len(c.payload["text"].split()) for c in chunks) >= 7
@@ -186,42 +300,45 @@ def test_chunker_token_count_fallback_without_tokenizer():
         pdf_path.unlink(missing_ok=True)
 
 
-def test_chapter_change_in_middle_of_chunk_mocked():
+def test_chapter_path_in_payload_mocked():
     chunker = PdfChunker(max_tokens=200, overlap_tokens=20)
-    mock_paragraphs = [
-        (1, "First chapter content. " * 30, "Chapter One"),
-        (1, "More text under chapter one. " * 20, ""),
-        (1, "Chapter Two", "Chapter Two"),
-        (1, "Content under chapter two. " * 15, ""),
-    ]
+    stem = "docx"
+    s1 = _make_segment([stem, "Chapter One"], "First chapter content. " * 30, 1)
+    s2 = _make_segment([stem, "Chapter One", "Chapter Two"], "Content under chapter two. " * 15, 1)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=mock_paragraphs):
-            chunks = chunker.chunk_document(pdf_path)
-        chunk_with_ch2 = next((c for c in chunks if "Chapter Two" in c.payload["text"]), None)
-        assert chunk_with_ch2 is not None and chunk_with_ch2.payload["chapter"] == "Chapter Two"
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[s1, s2]):
+            chunks = chunker.chunk_document(pdf_path, document_name=stem)
+        ch2 = [c for c in chunks if "Chapter Two" in c.payload["path"]]
+        assert len(ch2) >= 1
+        assert " - " in ch2[0].payload["path"]
     finally:
         pdf_path.unlink(missing_ok=True)
 
 
 def test_joined_chunk_texts_match_original_mocked():
-    chunker = PdfChunker(max_tokens=50, overlap_tokens=8)
-    mock_paragraphs = [
-        (1, "First paragraph with some content.", ""),
-        (1, "Second paragraph continues the flow.", ""),
-        (1, "Third paragraph and more text here.", ""),
-        (2, "Page two starts with this block.", ""),
-    ]
+    """Bodies round-trip after stripping chapter/section headers."""
+    # Whole-chunk word limit includes headers; 50 is tight — use a higher cap for this body.
+    chunker = PdfChunker(max_tokens=120, min_tokens=5, overlap_tokens=0)
+    stem = "docstem"
+    body = (
+        "First paragraph with some content.\n\n"
+        "Second paragraph continues the flow.\n\n"
+        "Third paragraph and more text here.\n\n"
+        "Page two starts with this block."
+    )
+    seg = _make_segment([stem], body, 1)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
-        with patch.object(chunker, "_extract_paragraphs_with_chapters", return_value=mock_paragraphs):
-            chunks = chunker.chunk_document(pdf_path)
-        deduped = _remove_duplicate_headers(mock_paragraphs)
-        original = " ".join(p[1] for p in deduped)
-        reconstructed = _reconstruct_text_from_chunks(chunker, chunks)
-        assert _normalize_whitespace(original) == _normalize_whitespace(reconstructed)
+        with patch.object(chunker, "_extract_chapter_segments", return_value=[seg]):
+            chunks = chunker.chunk_document(pdf_path, document_name=stem)
+        original = _normalize_whitespace(body)
+        reconstructed = _normalize_whitespace(
+            " ".join(_strip_chunk_headers(c.payload["text"]) for c in chunks)
+        )
+        assert original == reconstructed
     finally:
         pdf_path.unlink(missing_ok=True)
 

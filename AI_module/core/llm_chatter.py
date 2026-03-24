@@ -22,25 +22,25 @@ HistoryMessage = dict[str, str]
 # Returned by chat() when query/chunks/metadata are incomplete; LLM is not called.
 PROMPT_INCOMPLETE_RESPONSE: str = (
     "The prompt is not complete and the LLM was not called. "
-    "Please provide a non-empty question and at least one source chunk with complete metadata (text, source PDF name, and at least chapter or page)."
+    "Please provide a non-empty question and at least one source chunk with complete metadata (text, source PDF name, and at least path/chapter or page)."
 )
 
 
 def _format_source(metadata: dict[str, Any]) -> str:
-    """Format a single source block for the prompt (source PDF, Chapter, Page and text)."""
+    """Format a single source block for the prompt (source PDF, path/chapter, Page and text)."""
     text = (metadata.get("text") or "").strip()
     source_name = metadata.get("source") or ""
-    chapter = metadata.get("chapter") or ""
+    path = (metadata.get("path") or metadata.get("chapter") or "").strip()
     page = metadata.get("page") or metadata.get("page_start") or ""
     if not text:
         return ""
     parts = []
     if source_name:
         parts.append(f"Source: {source_name}")
-    if chapter or page:
+    if path or page:
         sub = []
-        if chapter:
-            sub.append(f"Chapter: {chapter}")
+        if path:
+            sub.append(f"Path: {path}")
         if page:
             sub.append(f"Page: {page}")
         parts.append(", ".join(sub))
@@ -69,8 +69,7 @@ def _is_non_empty(value: Any) -> bool:
 def _chunk_has_complete_metadata(payload: dict[str, Any]) -> bool:
     """
     True if payload has non-empty text, source (PDF name), and at least one of:
-    chapter, or page (or page_start). When chapter cannot be detected, chunks with
-    page or page_start are still used for citations.
+    path, chapter (legacy), or page (or page_start).
     """
     if not isinstance(payload, dict):
         return False
@@ -80,11 +79,12 @@ def _chunk_has_complete_metadata(payload: dict[str, Any]) -> bool:
     source = payload.get("source")
     if not _is_non_empty(source):
         return False
+    path = payload.get("path")
     chapter = payload.get("chapter")
     page = payload.get("page") if payload.get("page") is not None else payload.get("page_start")
-    has_chapter = _is_non_empty(chapter)
+    has_path = _is_non_empty(path) or _is_non_empty(chapter)
     has_page = _is_non_empty(page)
-    if not has_chapter and not has_page:
+    if not has_path and not has_page:
         return False
     return True
 
@@ -93,8 +93,7 @@ def _filter_chunks_with_complete_metadata(
     chunks: list[ChunkLike] | dict[str, Any],
 ) -> list[ChunkLike]:
     """
-    Return only chunks whose payload has complete metadata (text, source, and at least chapter or page).
-    Chunks with page/page_start but empty chapter are included when chapter cannot be detected.
+    Return only chunks whose payload has complete metadata (text, source, and path/chapter or page).
     """
     chunk_list = _chunks_list(chunks)
     result = []
@@ -119,10 +118,9 @@ def _format_history(history: list[HistoryMessage] | None) -> str:
     """
     if not history:
         return ""
-    # Take last 4 messages in order (typically 2 user + 2 assistant)
-    last_four = history[-4:]
+    tail = history[-4:] if len(history) > 4 else history
     lines: list[str] = []
-    for msg in last_four:
+    for msg in tail:
         if not isinstance(msg, dict):
             continue
         role = (msg.get("role") or "").strip().lower()
@@ -160,7 +158,7 @@ class LLMChatter:
             chunks: List of Chunk (or chunk-like with .payload), or dict with "chunks" key.
 
         Returns:
-            Formatted context string: one block per chunk, with optional [Source, Chapter, Page] citation.
+            Formatted context string: one block per chunk, with optional [Source, Path, Page] citation.
         """
         chunk_list = _chunks_list(chunks)
         if not chunk_list:

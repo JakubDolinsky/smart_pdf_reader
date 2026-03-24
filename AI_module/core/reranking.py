@@ -2,7 +2,7 @@
 Reranking in RAG pipeline: prepare (query, chunk) inputs for the reranker and return top-k chunks.
 Accepts a dictionary with "chunks" (list of Chunk from DBManager.search_similar). Builds query/chunk
 pairs, calls the infra RerankingClient to score them, and returns the reranked chunks (no scores
-in output). Logs the top 3 chunks with scores for analysis when behaviour is unexpected.
+in output). Logs the top chunks with scores for analysis.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class RerankingService:
         chunks_dict: Dict with "chunks" (list of Chunk, e.g. from DBManager.search_similar).
         Query must be non-empty; at least one chunk must have payload with non-empty text.
         Invalid chunks are skipped. If there is no valid pair, returns {"chunks": []}.
-        Scores are not returned; the top 3 chunks and their scores are logged for analysis.
+        Scores are not returned; the top chunks and their scores are logged for analysis.
 
         Returns:
             Dict with "chunks" (list of Chunk, ordered by relevance, vector=None).
@@ -68,6 +68,7 @@ class RerankingService:
 
         indexed = list(zip(valid_indices, scores))
         indexed.sort(key=lambda x: x[1], reverse=True)
+
         top_indexed = indexed[:top_k]
 
         out_ids = [ids[i] for i, _ in top_indexed]

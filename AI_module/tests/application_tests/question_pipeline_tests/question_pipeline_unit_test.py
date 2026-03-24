@@ -19,13 +19,14 @@ if _root not in _resolved_paths:
 import pytest
 from AI_module.core.chunk import Chunk
 from AI_module.application.question_pipeline.question_pipeline_orchestration import answer_question
+from AI_module.config import RAG_NO_INFORMATION_IN_DOCUMENT, TOP_K_SIMILAR_CHUNKS
 from AI_module.core.llm_chatter import PROMPT_INCOMPLETE_RESPONSE
 
 
-def _chunk(id_: str, text: str, source: str = "doc.pdf", chapter: str = "Ch1", page: int = 1) -> Chunk:
+def _chunk(id_: str, text: str, source: str = "doc.pdf", path: str = "Ch1", page: int = 1) -> Chunk:
     return Chunk(
         id=id_,
-        payload={"text": text, "source": source, "chapter": chapter, "page": page},
+        payload={"text": text, "source": source, "path": path, "page": page},
         vector=None,
     )
 
@@ -49,27 +50,30 @@ def test_answer_question_no_similar_chunks_returns_incomplete_response():
         db_manager=mock_db,
     )
     assert result == PROMPT_INCOMPLETE_RESPONSE
-    mock_embed.embed_query.assert_called_once_with("What is the main topic?", history=None)
+    mock_embed.embed_query.assert_called_once_with("What is the main topic?")
     mock_db.search_similar.assert_called_once()
 
 
-def test_answer_question_rerank_returns_no_chunks_returns_incomplete_response():
-    """When rerank returns no chunks, answer_question returns PROMPT_INCOMPLETE_RESPONSE."""
+def test_answer_question_rerank_returns_no_chunks_returns_no_information_without_llm():
+    """When rerank returns no chunks, return RAG message and do not call LLM."""
     mock_embed = MagicMock()
     mock_embed.embed_query.return_value = [0.1] * 384
     mock_db = MagicMock()
     mock_db.search_similar.return_value = {"chunks": [_chunk("c1", "some text")]}
     mock_reranker = MagicMock()
     mock_reranker.rerank.return_value = {"chunks": []}
+    mock_chatter = MagicMock()
 
     result = answer_question(
         "What is it?",
         embedding_service=mock_embed,
         db_manager=mock_db,
         reranking_service=mock_reranker,
+        llm_chatter=mock_chatter,
     )
-    assert result == PROMPT_INCOMPLETE_RESPONSE
+    assert result == RAG_NO_INFORMATION_IN_DOCUMENT
     mock_reranker.rerank.assert_called_once()
+    mock_chatter.chat.assert_not_called()
 
 
 def test_answer_question_full_flow_returns_llm_answer():
@@ -101,10 +105,10 @@ def test_answer_question_full_flow_returns_llm_answer():
     )
     assert result == llm_answer
 
-    mock_embed.embed_query.assert_called_once_with(query, history=None)
+    mock_embed.embed_query.assert_called_once_with(query)
     mock_db.search_similar.assert_called_once()
     call_kw = mock_db.search_similar.call_args[1]
-    assert call_kw["top_k"] == 20
+    assert call_kw["top_k"] == TOP_K_SIMILAR_CHUNKS
     assert call_kw["include_scores"] is True
     mock_reranker.rerank.assert_called_once_with(query, {"chunks": chunks_from_db}, top_k=3)
     mock_chatter.chat.assert_called_once()
@@ -141,7 +145,7 @@ def test_answer_question_passes_history_to_chatter():
     assert result == "Answer with history."
     mock_chatter.chat.assert_called_once()
     call_kw = mock_chatter.chat.call_args[1]
-    assert call_kw.get("history") == history  # history_for_llm is last 4 chronological = history when len 4
+    assert call_kw.get("history") == history[-2:]
 
 
 def test_answer_question_calls_search_with_custom_top_k():
@@ -197,12 +201,14 @@ def test_answer_question_strips_question_whitespace():
 
     answer_question("  What is it?  ", embedding_service=mock_embed, db_manager=mock_db,
                     reranking_service=mock_reranker, llm_chatter=mock_chatter)
-    mock_embed.embed_query.assert_called_once_with("What is it?", history=None)
+    mock_embed.embed_query.assert_called_once_with("What is it?")
     assert mock_chatter.chat.call_args[0][1] == "What is it?"
 
 
-def test_answer_question_with_reference_word_passes_history_to_embed():
-    """When question contains a reference word (e.g. 'that') and history is passed, embed_query is called with history so it can append prior context."""
+def test_answer_question_with_reference_word_calls_rewriter_and_embeds_rewritten():
+    """Reference-word questions use rewriter + prior Q/A; embed_query receives rewritten text only."""
+    mock_rewriter = MagicMock()
+    mock_rewriter.rewrite.return_value = "What about Paris as the capital of France?"
     mock_embed = MagicMock()
     mock_embed.embed_query.return_value = [0.0] * 384
     mock_db = MagicMock()
@@ -212,23 +218,27 @@ def test_answer_question_with_reference_word_passes_history_to_embed():
     mock_chatter = MagicMock()
     mock_chatter.chat.return_value = "Answer."
 
-    history_reversed = [{"role": "assistant", "content": "Paris is the capital of France."}]
+    history_reversed = [
+        {"role": "assistant", "content": "Paris is the capital of France."},
+        {"role": "user", "content": "What is the capital?"},
+    ]
     answer_question(
         "What about that?",
         embedding_service=mock_embed,
         db_manager=mock_db,
         reranking_service=mock_reranker,
         llm_chatter=mock_chatter,
-        history_last_four_messages_reversed=history_reversed,
+        history_last_two_messages_reversed=history_reversed,
+        rewriter_client=mock_rewriter,
     )
-    mock_embed.embed_query.assert_called_once()
-    call_args = mock_embed.embed_query.call_args
-    assert call_args[0][0] == "What about that?"
-    assert call_args[1].get("history") == history_reversed
+    mock_rewriter.rewrite.assert_called_once()
+    mock_embed.embed_query.assert_called_once_with(
+        "What about Paris as the capital of France?"
+    )
 
 
-def test_answer_question_history_last_four_reversed_used_for_llm_chronological():
-    """When history_last_four_messages_reversed is passed, chatter receives chronological (reversed) list."""
+def test_answer_question_history_last_two_reversed_used_for_llm_chronological():
+    """When history_last_two_messages_reversed is passed, chatter receives chronological (reversed) list."""
     mock_embed = MagicMock()
     mock_embed.embed_query.return_value = [0.0] * 384
     mock_db = MagicMock()
@@ -251,7 +261,7 @@ def test_answer_question_history_last_four_reversed_used_for_llm_chronological()
         db_manager=mock_db,
         reranking_service=mock_reranker,
         llm_chatter=mock_chatter,
-        history_last_four_messages_reversed=history_reversed,
+        history_last_two_messages_reversed=history_reversed,
     )
     call_kw = mock_chatter.chat.call_args[1]
     expected_chronological = list(reversed(history_reversed))

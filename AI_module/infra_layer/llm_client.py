@@ -10,7 +10,7 @@ from AI_module.config import (
     LLM_LANGUAGE_INSTRUCTION,
     LLM_MAX_NEW_TOKENS,
     LLM_OLLAMA_HOST,
-    LLM_OLLAMA_MODEL,
+    LLM_OLLAMA_MODEL_PHI_MINI,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,12 +32,12 @@ class LlmClient:
     ) -> None:
         """
         Args:
-            model: Ollama model name (e.g. mistral:7b-instruct). If None, uses LLM_OLLAMA_MODEL from config.
+            model: Ollama model name (e.g. mistral:7b-instruct). If None, uses LLM_OLLAMA_MODEL_Q4_K from config.
             host: Ollama server URL. If None, uses LLM_OLLAMA_HOST from config.
             max_new_tokens: Maximum tokens to generate for the answer.
             language_instruction: Instruction so the model responds in the desired language (e.g. English or Slovak).
         """
-        self._model = model if model is not None else LLM_OLLAMA_MODEL
+        self._model = model if model is not None else LLM_OLLAMA_MODEL_PHI_MINI
         self._host = host if host is not None else LLM_OLLAMA_HOST
         self._max_new_tokens = max_new_tokens
         self._language_instruction = language_instruction
@@ -85,15 +85,32 @@ class LlmClient:
         if not prompt or not prompt.strip():
             raise ValueError("prompt must be non-empty")
 
+        normalized_prompt = prompt.strip()
+
         messages = [
             {"role": "system", "content": self._language_instruction.strip()},
-            {"role": "user", "content": prompt.strip()},
+            {"role": "user", "content": normalized_prompt},
         ]
+
+        # Logging the actual prompt helps debugging RAG prompt construction issues.
+        # Keep it bounded to avoid huge logs (prompts may include large chunk text).
+        max_logged_chars = 2000
+        prompt_for_log = (
+            normalized_prompt[:max_logged_chars] + "…(truncated)"
+            if len(normalized_prompt) > max_logged_chars
+            else normalized_prompt
+        )
+        logger.debug(
+            "Sending LLM prompt (model=%s, prompt_len=%d): %s",
+            self._model,
+            len(normalized_prompt),
+            prompt_for_log,
+        )
 
         answer = self._call_ollama(messages)
         logger.debug(
             "LLM answer generated (model=%s, prompt_len=%d)",
             self._model,
-            len(prompt),
+            len(normalized_prompt),
         )
         return answer

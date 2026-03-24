@@ -25,7 +25,7 @@ from AI_module.core.db_manager import DBManager
 def _make_chunk(chunk_id: str, text: str, vector: list[float] | None = None) -> Chunk:
     return Chunk(
         id=chunk_id,
-        payload={"text": text, "source": "test", "page": 1, "chunk_index": 0, "chapter": ""},
+        payload={"text": text, "source": "test", "page": 1, "chunk_index": 0, "path": ""},
         vector=vector,
     )
 

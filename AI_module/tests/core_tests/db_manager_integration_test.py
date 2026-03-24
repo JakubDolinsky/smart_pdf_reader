@@ -78,7 +78,7 @@ def client(qdrant_host_port):
 def _make_chunk(chunk_id: str, text: str, vector: list[float]) -> Chunk:
     return Chunk(
         id=chunk_id,
-        payload={"text": text, "source": "test", "page": 1, "chunk_index": 0, "chapter": ""},
+        payload={"text": text, "source": "test", "page": 1, "chunk_index": 0, "path": ""},
         vector=vector,
     )
 

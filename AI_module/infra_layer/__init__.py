@@ -2,6 +2,7 @@
 
 from .db_health import check_db_ready, is_qdrant_server_running
 from .llm_client import LlmClient
+from .rewriter_client import RewriterClient
 from .ollama_lifecycle import (
     is_ollama_running,
     managed as ollama_managed,
@@ -15,6 +16,7 @@ __all__ = [
     "is_ollama_running",
     "is_qdrant_server_running",
     "LlmClient",
+    "RewriterClient",
     "ollama_managed",
     "register_application_exit_handlers",
     "start_ollama",

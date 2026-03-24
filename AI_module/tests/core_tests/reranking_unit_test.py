@@ -151,7 +151,7 @@ def mock_reranking_client():
 
 def test_rerank_calls_client_score_pairs_with_pairs(mock_reranking_client):
     """rerank builds pairs and calls client.score_pairs with them; returns chunks only."""
-    mock_reranking_client.score_pairs.return_value = [0.8, 0.6]
+    mock_reranking_client.score_pairs.return_value = [0.85, 0.75]
     chunks_in = _dbmanager_result(["id1", "id2"], ["Chunk one.", "Chunk two."])
     service = RerankingService(client=mock_reranking_client)
     result = service.rerank("user query", chunks_in, top_k=2)
@@ -177,12 +177,12 @@ def test_rerank_orders_by_score_descending(mock_reranking_client):
 
 def test_rerank_top_k_limits_results(mock_reranking_client):
     """rerank returns at most top_k chunks."""
-    mock_reranking_client.score_pairs.return_value = [0.1, 0.2, 0.3, 0.4]
+    mock_reranking_client.score_pairs.return_value = [0.71, 0.72, 0.73, 0.74]
     chunks_in = _dbmanager_result(["a", "b", "c", "d"], ["A.", "B.", "C.", "D."])
     service = RerankingService(client=mock_reranking_client)
     result = service.rerank("q", chunks_in, top_k=2)
     assert len(result["chunks"]) == 2
-    assert result["chunks"][0].id == "d" and result["chunks"][1].id == "c"
+    assert result["chunks"][0].id == "d" and result["chunks"][1].id == "c"  # scores 0.74, 0.73
 
 
 def test_rerank_client_returns_wrong_scores_length_returns_empty(mock_reranking_client):
@@ -234,6 +234,26 @@ def test_rerank_accepts_dbmanager_chunks_output(mock_reranking_client):
     assert result["chunks"][0].id == "c1" and result["chunks"][0].payload["text"] == "First passage."
     assert result["chunks"][1].id == "c2" and result["chunks"][1].payload["text"] == "Second passage."
     assert "scores" not in result
+
+
+def test_rerank_keeps_all_scores_no_min_threshold(mock_reranking_client):
+    """Without a min score, low-scoring chunks still participate; top_k is by descending score."""
+    mock_reranking_client.score_pairs.return_value = [0.65, 0.85]
+    chunks_in = _dbmanager_result(["low", "high"], ["Low.", "High."])
+    service = RerankingService(client=mock_reranking_client)
+    result = service.rerank("q", chunks_in, top_k=5)
+    assert len(result["chunks"]) == 2
+    assert result["chunks"][0].id == "high"
+    assert result["chunks"][1].id == "low"
+
+
+def test_rerank_low_scores_still_return_top_k(mock_reranking_client):
+    mock_reranking_client.score_pairs.return_value = [0.1, 0.2, 0.35]
+    chunks_in = _dbmanager_result(["a", "b", "c"], ["A.", "B.", "C."])
+    service = RerankingService(client=mock_reranking_client)
+    result = service.rerank("q", chunks_in, top_k=3)
+    assert len(result["chunks"]) == 3
+    assert result["chunks"][0].id == "c" and result["chunks"][1].id == "b"
 
 
 if __name__ == "__main__":

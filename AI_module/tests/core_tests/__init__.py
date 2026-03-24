@@ -1,1 +1,1 @@
-"""Tests for AI_module.core (chunk, chunking)."""
+"""Tests for AI_module.core (chunk, chunking, pdf_parsing)."""

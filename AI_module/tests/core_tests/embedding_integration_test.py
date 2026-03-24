@@ -26,7 +26,7 @@ from AI_module.core.embedding import EmbeddingService
 
 
 def _make_chunk(chunk_id: str, text: str, **payload_extra) -> Chunk:
-    payload = {"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "chapter": ""}
+    payload = {"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "path": ""}
     payload.update(payload_extra)
     return Chunk(id=chunk_id, payload=payload, vector=None)
 

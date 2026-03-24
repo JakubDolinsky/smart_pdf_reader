@@ -77,7 +77,8 @@ def get_answer(
     Optional history: last 4 messages (2 user + 2 assistant) are included in the prompt.
 
     Returns:
-        Answer string, or PROMPT_INCOMPLETE_RESPONSE when question is empty or no chunks found.
+        Answer string; config RAG_NO_INFORMATION_IN_DOCUMENT when reranking returns no chunks;
+        PROMPT_INCOMPLETE_RESPONSE when question is empty or vector search returns no chunks.
     """
     h = host if host is not None else QDRANT_LOCAL_HOST
     p = port if port is not None else QDRANT_LOCAL_PORT

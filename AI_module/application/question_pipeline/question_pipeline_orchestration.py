@@ -1,7 +1,8 @@
 """
 Question pipeline orchestration: embed question -> search similar chunks -> rerank top-k -> LLM answer.
 Uses core EmbeddingService, DBManager, RerankingService, LLMChatter. Input is a question about PDF content;
-output is the LLM answer string (or PROMPT_INCOMPLETE_RESPONSE when query/chunks are invalid).
+output is the LLM answer string, RAG_NO_INFORMATION_IN_DOCUMENT when reranking returns no chunks,
+or PROMPT_INCOMPLETE_RESPONSE when the question is empty or vector search returns nothing.
 """
 
 from __future__ import annotations
@@ -9,14 +10,21 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from AI_module.config import RERANK_TOP_K, TOP_K_SIMILAR_CHUNKS, VECTOR_COLLECTION_NAME
+from AI_module.config import (
+    RAG_NO_INFORMATION_IN_DOCUMENT,
+    RERANK_TOP_K,
+    TOP_K_SIMILAR_CHUNKS,
+    VECTOR_COLLECTION_NAME,
+)
 from AI_module.core.db_manager import DBManager
 from AI_module.core.embedding import EmbeddingService
 from AI_module.core.llm_chatter import LLMChatter, PROMPT_INCOMPLETE_RESPONSE
 from AI_module.core.reranking import RerankingService
+from AI_module.core.rewriting import rewrite_question_for_embedding
 
 if TYPE_CHECKING:
     from AI_module.core.chunk import Chunk
+    from AI_module.infra_layer.rewriter_client import RewriterClient
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +66,8 @@ def answer_question(
     host: str | None = None,
     port: int | None = None,
     history: list[dict[str, str]] | None = None,
-    history_last_four_messages_reversed: list[dict[str, str]] | None = None,
+    history_last_two_messages_reversed: list[dict[str, str]] | None = None,
+    rewriter_client: "RewriterClient | None" = None,
 ) -> str:
     """
     Answer a question about PDF content using RAG: embed question, search DB for similar chunks
@@ -75,15 +84,18 @@ def answer_question(
         llm_chatter: Optional; if None, a default LLMChatter is used.
         host: Qdrant host when creating DBManager (e.g. for tests).
         port: Qdrant port when creating DBManager.
-        history: Optional list of {"role": "user"|"assistant", "content": str}; last 4 messages
-            are included in the prompt (chronological). Used for LLM when history_last_four_messages_reversed is not provided.
-        history_last_four_messages_reversed: Optional pre-built list of last 4 messages with
-            first = most recent (last in conversation). If provided, used for embedding (to append
-            prior context when question contains reference words) and reversed for the LLM prompt.
-            If empty or question has no reference words, embedding uses the question only.
+        history: Optional list of {"role": "user"|"assistant", "content": str}; last 2 messages
+            are included in the prompt (chronological).
+        history_last_two_messages_reversed: Optional pre-built list of last 2 messages with
+            first = most recent (last in conversation). Used with rewriter_client when the question
+            contains reference words; reversed for the LLM prompt chronologically.
+        rewriter_client: Optional RewriterClient (phi mini). If None, a default client is used when
+            rewriting runs; inject a mock for tests.
 
     Returns:
-        LLM answer string, or PROMPT_INCOMPLETE_RESPONSE if question is empty or no valid chunks.
+        LLM answer string; RAG_NO_INFORMATION_IN_DOCUMENT if DB returned chunks but reranking returned
+        none (LLM not called); PROMPT_INCOMPLETE_RESPONSE if question is empty or vector search
+        returned no chunks.
     """
     query_clean = (question or "").strip()
     if not query_clean:
@@ -91,13 +103,13 @@ def answer_question(
         return PROMPT_INCOMPLETE_RESPONSE
 
     # History for LLM (chronological: oldest first). For embedding we pass reversed (first = most recent).
-    if history_last_four_messages_reversed is not None:
-        history_for_llm = list(reversed(history_last_four_messages_reversed))
-        embed_history = history_last_four_messages_reversed if history_last_four_messages_reversed else None
+    if history_last_two_messages_reversed is not None:
+        history_for_llm = list(reversed(history_last_two_messages_reversed))
+        embed_history = history_last_two_messages_reversed if history_last_two_messages_reversed else None
     else:
-        history_last_four = (history[-4:] if history else [])
-        history_for_llm = history_last_four
-        embed_history = list(reversed(history_last_four)) if history_last_four else None
+        history_last_two = (history[-2:] if history else [])
+        history_for_llm = history_last_two
+        embed_history = list(reversed(history_last_two)) if history_last_two else None
 
     coll = collection_name or VECTOR_COLLECTION_NAME
     embedder = embedding_service if embedding_service is not None else EmbeddingService()
@@ -107,7 +119,12 @@ def answer_question(
     reranker = reranking_service if reranking_service is not None else RerankingService()
     chatter = llm_chatter if llm_chatter is not None else LLMChatter()
 
-    query_embedding = embedder.embed_query(query_clean, history=embed_history)
+    query_for_embed = rewrite_question_for_embedding(
+        query_clean,
+        embed_history,
+        rewriter_client=rewriter_client,
+    )
+    query_embedding = embedder.embed_query(query_for_embed)
     search_result: dict[str, Any] = db.search_similar(
         query_embedding, top_k=top_k_similar, include_scores=True
     )
@@ -119,8 +136,10 @@ def answer_question(
     reranked = reranker.rerank(query_clean, {"chunks": chunks_from_db}, top_k=rerank_top_k)
     top_chunks: list[Chunk] = reranked.get("chunks") or []
     if not top_chunks:
-        logger.debug("Question pipeline: rerank returned no chunks, returning incomplete response.")
-        return PROMPT_INCOMPLETE_RESPONSE
+        logger.debug(
+            "Question pipeline: rerank left no chunks, returning no-information response without LLM."
+        )
+        return RAG_NO_INFORMATION_IN_DOCUMENT
 
     raw_answer = chatter.chat({"chunks": top_chunks}, query_clean, history=history_for_llm)
     if raw_answer == PROMPT_INCOMPLETE_RESPONSE:

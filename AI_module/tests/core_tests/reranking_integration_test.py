@@ -109,12 +109,12 @@ def test_rerank_real_client_ranks_relevant_chunk_higher():
 
 def test_rerank_real_client_single_chunk():
     """Single chunk returns single chunk in result."""
-    chunks = _dbmanager_result(["only"], ["Single passage about nothing in particular."])
+    chunks = _dbmanager_result(["only"], ["Single passage about anything in particular."])
     service = RerankingService()
     result = service.rerank("anything", chunks, top_k=3)
     assert len(result["chunks"]) == 1
     assert result["chunks"][0].id == "only"
-    assert result["chunks"][0].payload["text"] == "Single passage about nothing in particular."
+    assert result["chunks"][0].payload["text"] == "Single passage about anything in particular."
 
 
 def test_rerank_real_client_output_ready_for_prompt():

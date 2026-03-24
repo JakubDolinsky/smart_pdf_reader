@@ -55,7 +55,7 @@ public class BusinessChatMessage
         {
             Role = ChatRole.Assistant,
             Content = answer ?? string.Empty,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow.ToLocalTime()
         };
     }
 }

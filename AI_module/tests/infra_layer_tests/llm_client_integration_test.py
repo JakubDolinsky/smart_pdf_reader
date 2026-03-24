@@ -19,7 +19,7 @@ if _root not in _resolved_paths:
 
 import pytest
 from AI_module.infra_layer.llm_client import LlmClient
-from AI_module.config import RUN_LLM_TESTS, LLM_OLLAMA_HOST, LLM_OLLAMA_MODEL
+from AI_module.config import RUN_LLM_TESTS, LLM_OLLAMA_HOST, LLM_OLLAMA_MODEL_PHI_MINI
 from AI_module.infra_layer.ollama_lifecycle import managed as ollama_managed
 
 
@@ -40,7 +40,7 @@ def _ollama_unavailable() -> bool:
         else:
             names = []
         return not any(
-            n == LLM_OLLAMA_MODEL or n.startswith(LLM_OLLAMA_MODEL + ":") or LLM_OLLAMA_MODEL in n
+            n == LLM_OLLAMA_MODEL_PHI_MINI or n.startswith(LLM_OLLAMA_MODEL_PHI_MINI + ":") or LLM_OLLAMA_MODEL_PHI_MINI in n
             for n in names
         )
     except Exception:

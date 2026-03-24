@@ -19,8 +19,7 @@ if _root not in _resolved_paths:
     sys.path.insert(0, str(_root))
 
 import pytest
-from AI_module.core.chunk import Chunk
-from AI_module.core.chunking import PdfChunker, _remove_duplicate_headers, get_embedding_tokenizer
+from AI_module.core.chunking import PdfChunker, get_embedding_tokenizer
 
 
 def _make_pdf_with_chapters(
@@ -39,17 +38,16 @@ def _make_pdf_with_chapters(
         body_words = ["word"] * 400
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)
-    y = 50.0
-    rect = fitz.Rect(50, y, 545, y + 30)
-    page.insert_textbox(rect, chapter1_title, fontsize=chapter_fontsize, fontname="helv")
-    y += 50
+    # insert_text (point) reliably shows up in get_text(); tight insert_textbox rects can omit titles
+    y = 60.0
+    page.insert_text((50, y), chapter1_title, fontsize=chapter_fontsize, fontname="helv")
+    y += float(chapter_fontsize) * 2.0
     body_text = " ".join(body_words)
     rect = fitz.Rect(50, y, 545, 380)
     page.insert_textbox(rect, body_text, fontsize=body_fontsize, fontname="helv")
-    y = 400
-    rect = fitz.Rect(50, y, 545, y + 30)
-    page.insert_textbox(rect, chapter2_title, fontsize=chapter_fontsize, fontname="helv")
-    y += 50
+    y = 400.0
+    page.insert_text((50, y), chapter2_title, fontsize=chapter_fontsize, fontname="helv")
+    y += float(chapter_fontsize) * 2.0
     rect = fitz.Rect(50, y, 545, 800)
     page.insert_textbox(rect, body_text, fontsize=body_fontsize, fontname="helv")
     doc.save(path)
@@ -83,33 +81,23 @@ def _normalize_whitespace(text: str) -> str:
     return re.sub(r"[ \t\n\r]+", " ", text).strip()
 
 
-def _tokenize_like_chunker(chunker: PdfChunker, text: str) -> list:
-    if chunker._tokenizer is not None:
-        return list(chunker._tokenizer.encode(text, add_special_tokens=False))
-    return text.split()
-
-
-def _reconstruct_text_from_chunks(chunker: PdfChunker, chunks: list[Chunk]) -> str:
-    if not chunks:
+def _payload_body_only(text: str) -> str:
+    """Strip ``Chapter:`` and optional ``Section:`` header lines."""
+    lines = text.splitlines()
+    if not lines:
         return ""
-    tokens = _tokenize_like_chunker(chunker, chunks[0].payload["text"])
-    max_overlap = chunker._overlap_tokens
-    for c in chunks[1:]:
-        ct = _tokenize_like_chunker(chunker, c.payload["text"])
-        search_up_to = min(len(tokens), len(ct), max_overlap)
-        overlap_len = 0
-        for L in range(1, search_up_to + 1):
-            if tokens[-L:] == ct[:L]:
-                overlap_len = L
-        tokens.extend(ct[overlap_len:])
-    if chunker._tokenizer is not None:
-        return chunker._tokenizer.decode(tokens)
-    return " ".join(tokens)
+    i = 0
+    if lines[i].lower().startswith("chapter:"):
+        i += 1
+    if i < len(lines) and lines[i].lower().startswith("section:"):
+        i += 1
+    return "\n".join(lines[i:]).strip()
 
 
 def test_real_pdf_no_chunk_exceeds_max_tokens():
     tokenizer = _get_tokenizer_or_skip()
-    chunker = PdfChunker(max_tokens=32, overlap_tokens=6, tokenizer=tokenizer)
+    # Limit applies to full chunk text (headers + body); allow headroom beyond body-only 32.
+    chunker = PdfChunker(max_tokens=96, min_tokens=1, overlap_tokens=6, tokenizer=tokenizer)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
@@ -118,14 +106,14 @@ def test_real_pdf_no_chunk_exceeds_max_tokens():
         assert len(chunks) >= 2
         for c in chunks:
             tok_ids = tokenizer.encode(c.payload["text"], add_special_tokens=False)
-            assert len(tok_ids) <= 32
+            assert len(tok_ids) <= 96
     finally:
         pdf_path.unlink(missing_ok=True)
 
 
 def test_real_pdf_overlap_between_consecutive_chunks():
     tokenizer = _get_tokenizer_or_skip()
-    chunker = PdfChunker(max_tokens=32, overlap_tokens=6, tokenizer=tokenizer)
+    chunker = PdfChunker(max_tokens=96, min_tokens=1, overlap_tokens=6, tokenizer=tokenizer)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
@@ -133,8 +121,10 @@ def test_real_pdf_overlap_between_consecutive_chunks():
         chunks = chunker.chunk_document(pdf_path)
         assert len(chunks) >= 2
         for i in range(len(chunks) - 1):
-            cur = tokenizer.encode(chunks[i].payload["text"], add_special_tokens=False)
-            nxt = tokenizer.encode(chunks[i + 1].payload["text"], add_special_tokens=False)
+            if chunks[i].payload.get("path") != chunks[i + 1].payload.get("path"):
+                continue
+            cur = tokenizer.encode(_payload_body_only(chunks[i].payload["text"]), add_special_tokens=False)
+            nxt = tokenizer.encode(_payload_body_only(chunks[i + 1].payload["text"]), add_special_tokens=False)
             if len(cur) < 6 or len(nxt) < 6:
                 continue
             assert tuple(cur[-6:]) == tuple(nxt[:6])
@@ -144,7 +134,7 @@ def test_real_pdf_overlap_between_consecutive_chunks():
 
 def test_real_pdf_chapter_detection_and_chapter_change_mid_content():
     tokenizer = _get_tokenizer_or_skip()
-    chunker = PdfChunker(max_tokens=40, overlap_tokens=8, tokenizer=tokenizer)
+    chunker = PdfChunker(max_tokens=120, min_tokens=1, overlap_tokens=8, tokenizer=tokenizer)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
@@ -156,28 +146,42 @@ def test_real_pdf_chapter_detection_and_chapter_change_mid_content():
         )
         chunks = chunker.chunk_document(pdf_path)
         assert len(chunks) >= 2
-        second_chapter_chunks = [c for c in chunks if c.payload.get("chapter") == "Second Chapter"]
-        has_any_chapter = any(c.payload.get("chapter") for c in chunks)
-        if has_any_chapter:
+        second_chapter_chunks = [
+            c for c in chunks if c.payload.get("path") and "Second Chapter" in c.payload["path"]
+        ]
+        has_any_path = any(c.payload.get("path") for c in chunks)
+        if has_any_path:
             assert len(second_chapter_chunks) >= 1
         for c in second_chapter_chunks:
-            assert c.payload["chapter"] == "Second Chapter"
+            assert "Second Chapter" in c.payload["path"]
     finally:
         pdf_path.unlink(missing_ok=True)
 
 
 def test_joined_chunk_texts_match_original_real_pdf():
-    chunker = PdfChunker(max_tokens=80, overlap_tokens=12)
+    # No overlap: naive join of chunk bodies must equal extractable PDF text (overlap duplicates words).
+    chunker = PdfChunker(max_tokens=160, overlap_tokens=0, min_tokens=1)
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         pdf_path = Path(f.name)
     try:
         _make_single_block_pdf(pdf_path, ["item"] * 200)
-        paragraphs = chunker._extract_paragraphs_with_chapters(pdf_path)
-        deduped = _remove_duplicate_headers(paragraphs)
-        original = " ".join(p[1] for p in deduped)
+        blocks, _ = chunker._extract_raw_blocks(pdf_path)
+        original = _normalize_whitespace(" ".join(b.text for b in blocks))
         chunks = chunker.chunk_document(pdf_path)
-        reconstructed = _reconstruct_text_from_chunks(chunker, chunks)
-        assert _normalize_whitespace(original) == _normalize_whitespace(reconstructed)
+
+        def strip_headers(text: str) -> str:
+            lines = text.splitlines()
+            if not lines:
+                return ""
+            i = 0
+            if lines[i].lower().startswith("chapter:"):
+                i += 1
+            if i < len(lines) and lines[i].lower().startswith("section:"):
+                i += 1
+            return "\n".join(lines[i:]).strip()
+
+        reconstructed = _normalize_whitespace(" ".join(strip_headers(c.payload["text"]) for c in chunks))
+        assert original == reconstructed
     finally:
         pdf_path.unlink(missing_ok=True)
 

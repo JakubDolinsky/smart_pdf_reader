@@ -29,7 +29,7 @@ public class AskQuestionRequest
         {
             Role = Role,
             Content = Content ?? string.Empty,
-            CreatedAt = CreatedAt == default ? DateTime.UtcNow : CreatedAt
+            CreatedAt = CreatedAt == default ? DateTime.UtcNow.ToLocalTime() : CreatedAt
         };
     }
 }

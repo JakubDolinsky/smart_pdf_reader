@@ -17,6 +17,7 @@ public class ChatMessageService
     private readonly Clients.IFastApiClient _fastApiClient;
     private readonly int _maxQuestionLength;
     private readonly ILogger<ChatMessageService> _logger;
+    private readonly int _countOfSelectedMessagesForRequest;
 
     public ChatMessageService(
         IRepository repository,
@@ -30,6 +31,9 @@ public class ChatMessageService
         _maxQuestionLength = options?.Value?.MaxQuestionLength ?? 2000;
         if (_maxQuestionLength <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "MaxQuestionLength must be positive.");
+        _countOfSelectedMessagesForRequest = options?.Value?.CountOfLastMessagesForRequest ?? 2000;
+        if (_countOfSelectedMessagesForRequest <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "CountOfSelectedMessagesForRequest must be positive.");
     }
 
     /// <summary>
@@ -70,7 +74,7 @@ public class ChatMessageService
     }
 
     /// <summary>
-    /// Inserts the question into the DB, loads the last 5 messages, sends the newest question + the other 4 to the RAG FastAPI,
+    /// Inserts the question into the DB, loads the last 3 messages, sends the newest question + the other 2 to the RAG FastAPI,
     /// converts the answer to <see cref="BusinessChatMessage"/>, saves it to the DB, and returns it.
     /// Validates question length before processing.
     /// </summary>
@@ -86,27 +90,27 @@ public class ChatMessageService
         chatMessage.Role = ChatRole.User;
         await _repository.InsertAsync(chatMessage, cancellationToken).ConfigureAwait(false);
 
-        var lastFive = await _repository.GetMessagesAsync(5, cancellationToken).ConfigureAwait(false);
-        var businessMessages = lastFive.Select(BusinessChatMessage.FromDbChatMessage).ToList();
+        var lastMessages = await _repository.GetMessagesAsync(_countOfSelectedMessagesForRequest, cancellationToken).ConfigureAwait(false);
+        var businessMessages = lastMessages.Select(BusinessChatMessage.FromDbChatMessage).ToList();
 
         string currentQuestion;
-        IReadOnlyList<BusinessChatMessage> lastFour;
+        IReadOnlyList<BusinessChatMessage> lastMessagesForReq;
 
         if (businessMessages.Count >= 1)
         {
             var newest = businessMessages[businessMessages.Count - 1];
             currentQuestion = newest.Content ?? string.Empty;
-            lastFour = businessMessages.Take(businessMessages.Count - 1).ToList();
+            lastMessagesForReq = businessMessages.Take(businessMessages.Count - 1).ToList();
         }
         else
         {
             currentQuestion = question.Content ?? string.Empty;
-            lastFour = Array.Empty<BusinessChatMessage>();
+            lastMessagesForReq = Array.Empty<BusinessChatMessage>();
         }
 
-        _logger.LogDebug("AskAsync: calling RAG with history count={Count}", lastFour.Count);
+        _logger.LogDebug("AskAsync: calling RAG with history count={Count}", lastMessagesForReq.Count);
         var answerText = await _fastApiClient
-            .GetAnswerAsync(currentQuestion, lastFour, cancellationToken)
+            .GetAnswerAsync(currentQuestion, lastMessagesForReq, cancellationToken)
             .ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(answerText))
         {

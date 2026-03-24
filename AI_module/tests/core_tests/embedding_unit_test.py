@@ -31,7 +31,7 @@ def mock_client():
 
 
 def _make_chunk(chunk_id: str, text: str, **payload_extra) -> Chunk:
-    payload = {"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "chapter": ""}
+    payload = {"text": text, "source": "test_doc", "page": 1, "chunk_index": 0, "path": ""}
     payload.update(payload_extra)
     return Chunk(id=chunk_id, payload=payload, vector=None)
 
@@ -74,10 +74,10 @@ def test_embed_chunks_returns_chunks_with_vector_set(mock_client):
 
 
 def test_embed_chunks_preserves_order_and_payload(mock_client):
-    chunks = [_make_chunk("a", "Alpha", source="doc1", page=1, chapter="Ch1"), _make_chunk("b", "Beta", source="doc1", page=2, chapter="")]
+    chunks = [_make_chunk("a", "Alpha", source="doc1", page=1, path="Ch1"), _make_chunk("b", "Beta", source="doc1", page=2, path="")]
     service = EmbeddingService(client=mock_client)
     result = service.embed_chunks(chunks)
-    assert result[0].payload["source"] == "doc1" and result[0].payload["chapter"] == "Ch1"
+    assert result[0].payload["source"] == "doc1" and result[0].payload["path"] == "Ch1"
     assert result[1].payload["page"] == 2
 
 
@@ -120,34 +120,6 @@ def test_embed_query_output_ready_for_search_similar(mock_client):
     service = EmbeddingService(client=mock_client)
     vector = service.embed_query("Find similar chunks.")
     assert isinstance(vector, list) and len(vector) == 384 and all(isinstance(x, float) for x in vector)
-
-
-def test_embed_query_with_history_and_reference_word_appends_first_message(mock_client):
-    """When history is non-empty and query contains a reference word (e.g. 'that'), first message content is appended for embedding."""
-    mock_client.embed_query.return_value = [0.1] * 384
-    service = EmbeddingService(client=mock_client)
-    history = [{"role": "assistant", "content": "Paris is the capital of France."}]
-    service.embed_query("What about that?", history=history)
-    mock_client.embed_query.assert_called_once_with(
-        "What about that? Paris is the capital of France."
-    )
-
-
-def test_embed_query_with_history_no_reference_word_uses_query_only(mock_client):
-    """When history is provided but query has no reference word, client is called with query only."""
-    mock_client.embed_query.return_value = [0.1] * 384
-    service = EmbeddingService(client=mock_client)
-    history = [{"role": "user", "content": "What is the capital?"}]
-    service.embed_query("What is the population?", history=history)
-    mock_client.embed_query.assert_called_once_with("What is the population?")
-
-
-def test_embed_query_with_empty_history_uses_query_only(mock_client):
-    """When history is empty list, no appending."""
-    mock_client.embed_query.return_value = [0.1] * 384
-    service = EmbeddingService(client=mock_client)
-    service.embed_query("What is this?", history=[])
-    mock_client.embed_query.assert_called_once_with("What is this?")
 
 
 def main():

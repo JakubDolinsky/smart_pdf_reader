@@ -48,10 +48,10 @@ def test_build_context_single_chunk_with_source_chapter_page():
     chatter = LLMChatter()
     ctx = chatter.build_context(chunks)
     assert "Source: doc.pdf" in ctx
-    assert "Chapter: Europe" in ctx
+    assert "Path: Europe" in ctx
     assert "Page: 3" in ctx
     assert "Paris is the capital." in ctx
-    assert "[Source: doc.pdf; Chapter: Europe, Page: 3]" in ctx
+    assert "[Source: doc.pdf; Path: Europe, Page: 3]" in ctx
 
 
 def test_build_context_uses_page_start_if_page_missing():
