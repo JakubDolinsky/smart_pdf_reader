@@ -1,5 +1,7 @@
 """
-Integration tests for EmbeddingClient with real sentence-transformers model (first run may download).
+Integration tests for EmbeddingClient with real sentence-transformers model.
+With a local snapshot (see AI_module/dev_tools/download_embedding_model.py), tests run offline.
+Without it, the Hub id is used and the first run needs network.
 For unit tests (mocked) see embedding_client_unit_test.py.
 Run directly: python AI_module/tests/infra_layer_tests/embedding_client_integration_test.py
 Or: python -m pytest AI_module/tests/infra_layer_tests/embedding_client_integration_test.py -v

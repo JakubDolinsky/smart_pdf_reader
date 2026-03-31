@@ -41,7 +41,7 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question about the PDF content.")
     history: list[HistoryMessage] | None = Field(
         default=None,
-        description="Optional conversation history (last 4 messages used). Each: {role, content}.",
+        description="Optional conversation history (last 2 messages used). Each: {role, content}.",
     )
 
 
@@ -61,7 +61,7 @@ def health() -> dict[str, str]:
 def ask(request: AskRequest) -> AskResponse:
     """
     Ask a question about the ingested PDFs. Uses the RAG pipeline (embed -> search -> rerank -> LLM).
-    Optional history: last 4 messages (2 user + 2 assistant) are included for context and referential questions.
+    Optional history: last 2 messages (1 user + 1 assistant) are included for context and referential questions.
     Returns the answer or a message if the question is empty or no relevant chunks were found.
     """
     question = (request.question or "").strip()

@@ -49,7 +49,8 @@ def _recreate_test_collection():
 @pytest.fixture(scope="session", autouse=True)
 def start_qdrant_server_before_tests():
     """Run bootstrap: ensure Docker and Qdrant server are up before any integration test; stop Qdrant container after tests (like stop_app_db.bat)."""
-    ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    ok = ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    assert ok, f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT} and could not be started."
     yield
     stop_qdrant_server()
 
@@ -70,11 +71,7 @@ def cleanup_qdrant_after_test_cycle():
 def client(qdrant_host_port):
     """VectorDBClient against real Qdrant server (test collection). Skips if server not reachable after bootstrap."""
     host, port = qdrant_host_port
-    if host is None or port is None:
-        pytest.skip(
-            f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT} "
-            "and could not be started (bootstrap.ensure_db_ready failed)."
-        )
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved after bootstrap."
     _recreate_test_collection()
     c = VectorDBClient(
         host=host,

@@ -45,7 +45,8 @@ def _delete_db_manager_collection():
 @pytest.fixture(scope="session", autouse=True)
 def start_qdrant_server_before_tests():
     """Ensure Docker and Qdrant are up before tests; stop Qdrant after session."""
-    ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    ok = ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    assert ok, f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT} and could not be started."
     yield
     stop_qdrant_server()
 
@@ -60,11 +61,7 @@ def qdrant_host_port():
 def client(qdrant_host_port):
     """VectorDBClient connected to real Qdrant (test collection). Skips if server not reachable."""
     host, port = qdrant_host_port
-    if host is None or port is None:
-        pytest.skip(
-            f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT}; "
-            "start with db_bootstrap or start_app_db.bat."
-        )
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved after bootstrap."
     _delete_db_manager_collection()
     c = VectorDBClient(
         host=host,

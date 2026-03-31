@@ -4,8 +4,6 @@ Core embedding: embed a query (for similarity search) or a batch of chunks (for 
 Uses AI_module.infra_layer.embedding_client. Outputs are ready for:
 - Query: vector to pass to DBManager.search_similar.
 - Batch: chunks with vector set, ready to pass to DBManager.insert_chunks.
-
-Referential query expansion for retrieval is handled in core.rewriting + question pipeline before embed_query.
 """
 
 import logging
@@ -43,7 +41,7 @@ class EmbeddingService:
         Embed a single query for similarity search.
 
         Args:
-            query: User question or search text (already rewritten upstream when needed).
+            query: User question or search text.
 
         Returns:
             Embedding vector (e.g. 384-dim). Ready to pass to

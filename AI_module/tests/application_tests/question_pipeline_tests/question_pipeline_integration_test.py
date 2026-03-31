@@ -30,10 +30,20 @@ from AI_module.tests.db_bootstrap import (
 )
 
 
+def _resolve_qdrant_host_port_or_fail() -> tuple[str, int]:
+    # Give Docker/Qdrant more time on cold starts (Windows + Docker Desktop).
+    ok = ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT, wait_qdrant_seconds=60.0)
+    assert ok, f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT} and could not be started."
+    host, port = get_resolved_host_port(QDRANT_HOST, QDRANT_PORT)
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved after bootstrap."
+    return host, port
+
+
 def _make_chunk(chunk_id: str, text: str, source: str = "test_doc", path: str = "Ch1", page: int = 1) -> Chunk:
     return Chunk(
         id=chunk_id,
-        payload={"text": text, "source": source, "path": path, "page": page},
+        # Include both `path` and legacy `chapter` to match different parts of the pipeline.
+        payload={"text": text, "source": source, "path": path, "chapter": path, "page": page},
         vector=None,
     )
 
@@ -41,7 +51,7 @@ def _make_chunk(chunk_id: str, text: str, source: str = "test_doc", path: str = 
 @pytest.fixture(scope="session", autouse=True)
 def qdrant_server():
     """Ensure Qdrant is up via db_bootstrap; stop after session."""
-    ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    _resolve_qdrant_host_port_or_fail()
     try:
         yield
     finally:
@@ -51,15 +61,14 @@ def qdrant_server():
 @pytest.fixture(scope="session")
 def qdrant_host_port():
     """Resolved (host, port) for Qdrant after bootstrap."""
-    return get_resolved_host_port(QDRANT_HOST, QDRANT_PORT)
+    return _resolve_qdrant_host_port_or_fail()
 
 
 @pytest.fixture
 def db_manager(qdrant_host_port):
     """DBManager for question pipeline test collection. Skips if Qdrant not reachable."""
     host, port = qdrant_host_port
-    if host is None or port is None:
-        pytest.skip("Qdrant server not reachable")
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved after bootstrap."
     client = VectorDBClient(
         host=host,
         port=port,
@@ -71,17 +80,15 @@ def db_manager(qdrant_host_port):
 @pytest.fixture(autouse=True)
 def clear_question_pipeline_collection(qdrant_host_port):
     """Clear the question pipeline test collection before each test."""
-    try:
-        from qdrant_client import QdrantClient
-        host, port = get_resolved_host_port(QDRANT_HOST, QDRANT_PORT)
-        if host is None:
-            host, port = QDRANT_HOST, QDRANT_PORT
-        c = QdrantClient(host=host, port=port)
-        if c.collection_exists(VECTOR_COLLECTION_NAME_TEST):
-            c.delete_collection(VECTOR_COLLECTION_NAME_TEST)
-    except Exception:
-        pass
+    from qdrant_client import QdrantClient
+    host, port = _resolve_qdrant_host_port_or_fail()
+    c = QdrantClient(host=host, port=port)
+    if c.collection_exists(VECTOR_COLLECTION_NAME_TEST):
+        c.delete_collection(VECTOR_COLLECTION_NAME_TEST)
     yield
+    # Ensure cleanup after each test too.
+    if c.collection_exists(VECTOR_COLLECTION_NAME_TEST):
+        c.delete_collection(VECTOR_COLLECTION_NAME_TEST)
 
 
 def test_answer_question_empty_returns_incomplete_response():

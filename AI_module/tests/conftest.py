@@ -4,6 +4,8 @@ Configures test logging and logs pass/fail (and failure reason) for each test.
 """
 
 import logging
+import sys
+import warnings
 
 import pytest
 
@@ -13,8 +15,25 @@ logger = logging.getLogger(__name__)
 
 
 def pytest_configure(config):
-    """Configure test logging at session start (creates tests/logs when ENABLE_LOGGING is True)."""
+    """Configure test logging and console warning/error output at session start."""
     configure_test_logging()
+    # Print all Python warnings during tests and route them through logging.
+    warnings.simplefilter("always")
+    logging.captureWarnings(True)
+
+    # Always print WARNING+ logs (including captured warnings) to console.
+    root = logging.getLogger()
+    has_console_warning_handler = any(
+        isinstance(h, logging.StreamHandler)
+        and getattr(h, "stream", None) in (sys.stderr, sys.stdout)
+        and h.level <= logging.WARNING
+        for h in root.handlers
+    )
+    if not has_console_warning_handler:
+        ch = logging.StreamHandler(stream=sys.stderr)
+        ch.setLevel(logging.WARNING)
+        ch.setFormatter(logging.Formatter("%(levelname)s | %(name)s | %(message)s"))
+        root.addHandler(ch)
 
 
 @pytest.hookimpl(hookwrapper=True)

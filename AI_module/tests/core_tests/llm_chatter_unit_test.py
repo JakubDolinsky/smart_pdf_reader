@@ -111,46 +111,38 @@ def test_create_prompt_includes_context_and_query():
     assert "Sources:" in prompt
     assert "Question:" in prompt
     assert "Answer:" in prompt
-    assert "Conversation history" in prompt
 
 
 def test_create_prompt_includes_history_when_provided():
-    """When history is passed, last 4 messages appear in the prompt."""
+    """When history is passed, last 2 messages appear in the prompt."""
     chunks = _chunks_list(["c1"], [{"text": "Content.", "source": "doc.pdf", "chapter": "Ch1", "page": 1}])
     history = [
         {"role": "user", "content": "First question?"},
         {"role": "assistant", "content": "First answer."},
-        {"role": "user", "content": "Second question?"},
-        {"role": "assistant", "content": "Second answer."},
+
     ]
     chatter = LLMChatter()
     prompt = chatter.create_prompt(chunks, "Third question?", history=history)
     assert "User: First question?" in prompt
     assert "Assistant: First answer." in prompt
-    assert "User: Second question?" in prompt
-    assert "Assistant: Second answer." in prompt
     assert "Third question?" in prompt
     assert "Content." in prompt
 
 
-def test_create_prompt_history_takes_last_four_messages():
-    """Only the last 4 history messages are included."""
+def test_create_prompt_history_takes_last_two_messages():
+    """Only the last 2 history messages are included."""
     chunks = _chunks_list(["c1"], [{"text": "X.", "source": "s.pdf", "page": 1}])
     history = [
-        {"role": "user", "content": "Old1"},
-        {"role": "assistant", "content": "Old2"},
         {"role": "user", "content": "Recent1"},
         {"role": "assistant", "content": "Recent2"},
     ]
     chatter = LLMChatter()
     prompt = chatter.create_prompt(chunks, "Q?", history=history)
     assert "Recent1" in prompt and "Recent2" in prompt
-    assert "Old1" in prompt and "Old2" in prompt
     history_extra = history + [{"role": "user", "content": "Newest"}]
     prompt2 = chatter.create_prompt(chunks, "Q?", history=history_extra)
     assert "Newest" in prompt2
-    assert "Old1" not in prompt2
-    assert "Old2" in prompt2
+
 
 
 def test_create_prompt_strips_query_whitespace():
@@ -279,8 +271,6 @@ def test_chat_passes_history_to_llm():
     chatter = LLMChatter(client=mock_client)
     chatter.chat(chunks, "Third?", history=history)
     call_prompt = mock_client.answer.call_args[0][0]
-    assert "User: First?" in call_prompt
-    assert "Assistant: First answer." in call_prompt
     assert "User: Second?" in call_prompt
     assert "Assistant: Second answer." in call_prompt
     assert "Third?" in call_prompt

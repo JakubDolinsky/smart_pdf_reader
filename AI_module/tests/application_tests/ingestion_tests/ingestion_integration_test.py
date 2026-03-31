@@ -51,7 +51,8 @@ def qdrant_server_and_config():
     Patch ingestion and db_client to use test config STORAGE_TYPE so run_ingestion uses Qdrant DB.
     Restore and stop Qdrant after the session.
     """
-    ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    ok = ensure_db_ready(host=QDRANT_HOST, port=QDRANT_PORT)
+    assert ok, f"Qdrant server not reachable at {QDRANT_HOST}:{QDRANT_PORT} and could not be started."
 
     patch_ingestion = patch("AI_module.application.ingestion.ingestion.STORAGE_TYPE", STORAGE_TYPE)
     patch_db_client = patch("AI_module.infra_layer.db_client.STORAGE_TYPE", STORAGE_TYPE)
@@ -75,8 +76,7 @@ def qdrant_host_port():
 def db_manager(qdrant_host_port):
     """DBManager over VectorDBClient for the ingestion test collection. Skips if Qdrant not reachable."""
     host, port = qdrant_host_port
-    if host is None or port is None:
-        pytest.skip("Qdrant server not reachable")
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved after bootstrap."
     client = VectorDBClient(
         host=host,
         port=port,
@@ -88,17 +88,15 @@ def db_manager(qdrant_host_port):
 @pytest.fixture(autouse=True)
 def clear_ingestion_collection(qdrant_host_port):
     """Clear the ingestion test collection before each test."""
+    from qdrant_client import QdrantClient
+    host, port = get_resolved_host_port(QDRANT_HOST, QDRANT_PORT)
+    assert host is not None and port is not None, "Qdrant host/port could not be resolved for cleanup."
+    c = QdrantClient(host=host, port=port)
+    if c.collection_exists(INGESTION_TEST_COLLECTION):
+        c.delete_collection(INGESTION_TEST_COLLECTION)
     yield
-    try:
-        from qdrant_client import QdrantClient
-        host, port = get_resolved_host_port(QDRANT_HOST, QDRANT_PORT)
-        if host is None:
-            host, port = QDRANT_HOST, QDRANT_PORT
-        c = QdrantClient(host=host, port=port)
-        if c.collection_exists(INGESTION_TEST_COLLECTION):
-            c.delete_collection(INGESTION_TEST_COLLECTION)
-    except Exception:
-        pass
+    if c.collection_exists(INGESTION_TEST_COLLECTION):
+        c.delete_collection(INGESTION_TEST_COLLECTION)
 
 
 def test_run_ingestion_inserts_and_search_returns_data(db_manager):

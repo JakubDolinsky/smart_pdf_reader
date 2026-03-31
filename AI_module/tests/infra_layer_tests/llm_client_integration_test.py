@@ -47,13 +47,16 @@ def _ollama_unavailable() -> bool:
         return True
 
 
-@pytest.mark.skipif(not RUN_LLM_TESTS, reason="Real LLM tests skipped; set RUN_LLM_TESTS=True in config to run")
 class TestLlmClientRealLLM:
     @pytest.fixture(scope="class")
     def ollama_for_real_llm(self):
         with ollama_managed():
             if _ollama_unavailable():
-                pytest.skip("Ollama or model not available; install Ollama and run: ollama pull mistral:7b-instruct")
+                raise AssertionError(
+                    "Ollama or model not available. Ensure Ollama is installed and running, "
+                    f"and pull the model: ollama pull {LLM_OLLAMA_MODEL_PHI_MINI}. "
+                    "Also ensure RUN_LLM_TESTS=True in AI_module/config.py."
+                )
             yield
 
     @pytest.fixture

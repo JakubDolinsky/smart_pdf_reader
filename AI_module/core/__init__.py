@@ -14,11 +14,6 @@ from .db_manager import DBManager
 from .embedding import EmbeddingService
 from .llm_chatter import LLMChatter, PROMPT_INCOMPLETE_RESPONSE
 from .reranking import RerankingService, prepare_pairs
-from .rewriting import (
-    REFERENCE_WORDS,
-    question_contains_reference_word,
-    rewrite_question_for_embedding,
-)
 
 __all__ = [
     "ChapterSegment",
@@ -31,10 +26,7 @@ __all__ = [
     "LLMChatter",
     "PROMPT_INCOMPLETE_RESPONSE",
     "PdfChunker",
-    "REFERENCE_WORDS",
     "RerankingService",
-    "question_contains_reference_word",
-    "rewrite_question_for_embedding",
     "chunk_directory",
     "get_embedding_tokenizer",
     "prepare_pairs",

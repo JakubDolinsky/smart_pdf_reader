@@ -1,14 +1,14 @@
 """
 LLM chatter: build RAG prompt from reranking chunks and user query, then call LLM client for answer.
 Sources from chunks (e.g. RerankingService.rerank output); prompt template from config.
-Supports optional conversation history (last 4 messages: 2 user + 2 assistant).
+Supports optional conversation history (last 2 messages: 1 user + 1 assistant).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from AI_module.config import LM_PROMPT_TEMPLATE
+from AI_module.config import llm_model_prompt_template
 
 if TYPE_CHECKING:
     from AI_module.infra_layer.llm_client import LlmClient
@@ -112,13 +112,14 @@ def _get_llm_client() -> "LlmClient":
 
 def _format_history(history: list[HistoryMessage] | None) -> str:
     """
-    Format the last 4 messages (2 user + 2 assistant) for the prompt.
+    Format the last 2 messages (1 user + 1 assistant) for the prompt.
     Each message: {"role": "user"|"assistant", "content": str}.
     Returns empty string if history is empty or None.
     """
     if not history:
         return ""
-    tail = history[-4:] if len(history) > 4 else history
+    # Include only the last 2 messages (1 user + 1 assistant).
+    tail = history[-2:] if len(history) > 2 else history
     lines: list[str] = []
     for msg in tail:
         if not isinstance(msg, dict):
@@ -187,8 +188,8 @@ class LLMChatter:
         Args:
             chunks: List of Chunk (or dict with "chunks" key) from RerankingService.rerank.
             query: The user's question.
-            template: Optional override for the prompt template (default: LM_PROMPT_TEMPLATE).
-            history: Optional list of {"role": "user"|"assistant", "content": str}; last 4 messages are included.
+            template: Optional override for the prompt template (default: ``llm_model_prompt_template`` from config).
+            history: Optional list of {"role": "user"|"assistant", "content": str}; last 2 messages are included.
 
         Returns:
             Full prompt string with optional history, Sources, and Question filled in.
@@ -196,7 +197,15 @@ class LLMChatter:
         context = self.build_context(chunks)
         query_clean = (query or "").strip()
         history_str = _format_history(history)
-        tpl = template if template is not None else LM_PROMPT_TEMPLATE
+        if template is not None:
+            tpl = template
+        else:
+            tpl = llm_model_prompt_template
+
+        # If context is empty, drop a standalone Sources block (avoids an empty "Sources:" title).
+        if template is None and not context and "Sources:\n{context}\n\n" in tpl:
+            tpl = tpl.replace("Sources:\n{context}\n\n", "")
+
         return tpl.format(history=history_str, context=context, query=query_clean)
 
     def chat(
@@ -209,13 +218,13 @@ class LLMChatter:
     ) -> str:
         """
         Build prompt from chunks, optional history, and query; send to the LLM client, return the answer.
-        Chunks with incomplete metadata are excluded. History: last 4 messages (2 user + 2 assistant).
+        Chunks with incomplete metadata are excluded. History: last 2 messages (1 user + 1 assistant).
 
         Args:
             chunks: List of Chunk (or dict with "chunks" key) from RerankingService.rerank.
             query: The user's question.
             template: Optional override for the prompt template.
-            history: Optional conversation history (list of {"role", "content"}); last 4 messages included.
+            history: Optional conversation history (list of {"role", "content"}); last 2 messages included.
 
         Returns:
             The LLM's answer string, or PROMPT_INCOMPLETE_RESPONSE if query is empty or no chunk has complete metadata.

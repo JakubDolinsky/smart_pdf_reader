@@ -74,7 +74,7 @@ def test_rerank_real_client_metadata_missing_text_returns_empty():
 
 
 def test_rerank_real_client_returns_top_k_with_scores():
-    """RerankingService without client uses real RerankingClient and returns top_k chunks (no scores in output)."""
+    """RerankingService uses real RerankingClient; returns up to top_k chunks after score filter (no scores in output)."""
     chunks = _dbmanager_result(
         ["c1", "c2", "c3"],
         [
@@ -86,7 +86,7 @@ def test_rerank_real_client_returns_top_k_with_scores():
     service = RerankingService()
     result = service.rerank("What is the capital of France?", chunks, top_k=2)
     assert "chunks" in result
-    assert len(result["chunks"]) == 2
+    assert 1 <= len(result["chunks"]) <= 2
     assert all(hasattr(c, "payload") for c in result["chunks"])
     assert "scores" not in result
 
@@ -102,7 +102,7 @@ def test_rerank_real_client_ranks_relevant_chunk_higher():
     )
     service = RerankingService()
     result = service.rerank("What is the capital of France?", chunks, top_k=2)
-    assert len(result["chunks"]) == 2
+    assert 1 <= len(result["chunks"]) <= 2
     top_text = result["chunks"][0].payload.get("text", "")
     assert "Paris" in top_text or "France" in top_text
 
@@ -145,7 +145,7 @@ def test_rerank_real_client_accepts_dbmanager_chunks_output():
     service = RerankingService()
     result = service.rerank("What is the capital of France?", dbmanager_out, top_k=2)
     assert "chunks" in result
-    assert len(result["chunks"]) == 2
+    assert 1 <= len(result["chunks"]) <= 2
     assert "scores" not in result
     top_text = result["chunks"][0].payload.get("text", "")
     assert "Paris" in top_text or "France" in top_text

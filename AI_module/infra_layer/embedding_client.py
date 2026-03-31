@@ -1,6 +1,7 @@
 """
 Embedding client for RAG: embed document chunks (ingestion) and user queries (search).
-Uses intfloat/multilingual-e5-small (384 dimensions) with query/passage prefixes.
+Uses multilingual-e5-small (384 dimensions) with query/passage prefixes.
+Model path comes from config EMBEDDING_MODEL_NAME (local snapshot if present, else Hub id).
 """
 
 import logging
@@ -29,7 +30,7 @@ class EmbeddingClient:
     ) -> None:
         """
         Args:
-            model_name: HuggingFace model id (default: intfloat/multilingual-e5-small).
+            model_name: Local model directory or Hugging Face Hub id (default: config EMBEDDING_MODEL_NAME).
             dimension: Expected embedding dimension (384 for multilingual-e5-small).
         """
         self._model_name = model_name

@@ -89,29 +89,90 @@ CHAPTER_FONT_SIZE_MULTIPLIER: float = 1.25
 # Embeddings
 # ---------------------------------------------------------------------------
 
-EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-small"
+# Hugging Face Hub id (used when local snapshot is missing; run dev_tools/download_embedding_model.py).
+EMBEDDING_MODEL_HUB_ID: str = "intfloat/multilingual-e5-small"
+# Full model snapshot for offline use (ignored by git under AI_module/data/).
+EMBEDDING_MODEL_LOCAL_DIR: Path = PROJECT_ROOT / "data" / "models" / "multilingual-e5-small"
+
+
+def _resolve_embedding_model_name() -> str:
+    """Use project-local snapshot if present (offline-friendly); otherwise the Hub id."""
+    local = EMBEDDING_MODEL_LOCAL_DIR.resolve()
+    if local.is_dir() and (local / "config.json").exists():
+        return str(local)
+    return EMBEDDING_MODEL_HUB_ID
+
+
+# Path string or Hub id passed to SentenceTransformer / AutoTokenizer.
+EMBEDDING_MODEL_NAME: str = _resolve_embedding_model_name()
 EMBEDDING_DIMENSION: int = 384
 
 # ---------------------------------------------------------------------------
 # LLM prompt (RAG: sources + question -> prompt for LM)
 # ---------------------------------------------------------------------------
 
-LM_PROMPT_TEMPLATE: str = """You are an assistant answering questions using the provided sources.
+LLM_PROMPT_TEMPLATE: str = """You are an assistant answering a user's question using provided source chunks and recent conversation context.
 
-Rules:
-- Use only the information from the sources.
-- Cite the source after each statement using the format (Chapter, Page).
-- Name the entity to which was the question related in every answer.
-- If the answer is not in the sources, say: "The information is not available in the provided document."
-
-Conversation history (last 2 user questions and 2 assistant answers, if any):
+INPUT:
+- Question: {query}
+- Previous conversation:
 {history}
-
-Sources:
+- Sources (numbered chunks):
 {context}
+
+INSTRUCTIONS:
+
+1. If the Question contains references (like "it", "they", "there", "that"), resolve them using the previous conversation (1 user message + 1 assistant message).
+
+2. Answer the Question using ONLY the provided Sources. Do NOT use outside knowledge.
+
+3. Every sentence MUST include a citation in parentheses:
+   (Source: <source>, Chapter: <chapter>, Page: <page>)
+
+4. A sentence without a citation is INVALID and must NOT be included.
+
+5. If a paragraph/bullet uses multiple chunks, include multiple citations.
+
+6. If NONE of the provided Sources contain EXACT information that directly answers the Question,
+output EXACTLY:
+The information is not available in the provided document.
+
+If at least one Source contains relevant information, you MUST provide the answer and MUST NOT output the fallback sentence.
+
+7. Keep the answer concise and include only information that directly answers the question.
+
+OUTPUT FORMAT:
+
+<your answer with citations inline>
+"""
+
+PHI_MINI_LLM_PROMPT_TEMPLATE: str = """You are an assistant answering a user's question using provided sources and recent conversation context.
 
 Question:
 {query}
+
+Previous conversation:
+{history}
+
+Chunks:
+{context}
+
+Instructions:
+
+1. If the question contains words like "it", "they", "there", use the previous conversation to understand them.
+
+2. Use ONLY the provided chunks.
+
+3. Write only sentences that directly answer the question.
+
+4. Every sentence MUST end with a citation in this format:
+(Source: <source>, Chapter: <chapter>, Page: <page>)
+
+5. Do not write any sentence without a citation.
+
+6. If NONE of the provided Sources contain EXACT information that directly answers the Question,
+output EXACTLY:
+The information is not available in the provided document.
 
 Answer:
 """
@@ -130,14 +191,17 @@ LLM_OLLAMA_MODEL_Q4_K: str = "mistral:7b-instruct-q4_K_S"
 
 LLM_OLLAMA_MODEL_PHI_MINI: str = "phi3:mini"
 
+# RAG prompt template for LLMChatter (must include {history}, {context}, {query} placeholders).
+# Point this at ``LM_PROMPT_TEMPLATE`` or ``PHI_MINI_LLM_PROMPT_TEMPLATE`` (or a custom string).
+llm_model_prompt_template: str = PHI_MINI_LLM_PROMPT_TEMPLATE
+
+# Ollama model tag for LlmClient (e.g. ``LLM_OLLAMA_MODEL_PHI_MINI`` or ``LLM_OLLAMA_MODEL_LATEST``).
+llm_model: str = LLM_OLLAMA_MODEL_PHI_MINI
+
 LLM_OLLAMA_HOST: str = "http://localhost:11434"
 LLM_MAX_NEW_TOKENS: int = 170
 
-# Query rewriter (Ollama): separate from main RAG LLM; keep short generation for one-line output.
-REWRITER_OLLAMA_MODEL: str = "phi3:mini"
-REWRITER_MAX_NEW_TOKENS: int = 40
-
-# Referential questions: trigger rewriter when any of these appear as whole words/phrases (see core.rewriting).
+# Reference words used to decide whether prompt history is needed.
 REFERENCE_WORDS: list[str] = [
     "this", "that", "these", "those",
     "he", "she", "they", "him", "her", "them",
@@ -154,20 +218,8 @@ REFERENCE_WORDS: list[str] = [
     "then", "at that time", "during that time",
     "after that", "before that",
     "such", "such a", "such an",
-    "what about", "how about", "and what about"
+    "what about", "how about", "and what about",
 ]
-
-REWRITE_PROMPT_TEMPLATE: str = """You are a query rewriting assistant.
-
-Rewrite the user's question so that it is self-contained and explicit.
-Use the context from the previous question and its answer to resolve any pronouns or ambiguous references.
-
-Previous question: {prev_question}
-Previous answer: {prev_answer}
-User's current question: {current_question}
-
-Output only the rewritten question.
-"""
 
 LLM_LANGUAGE: str = "en"
 LLM_LANGUAGE_CUSTOM_INSTRUCTION: str | None = None

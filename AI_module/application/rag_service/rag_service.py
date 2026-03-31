@@ -74,7 +74,7 @@ def get_answer(
     Answer a single question using the RAG pipeline (embed -> search -> rerank -> LLM).
 
     Uses shared pipeline services when host/port are the defaults.
-    Optional history: last 4 messages (2 user + 2 assistant) are included in the prompt.
+    Optional history: last 2 messages (1 user + 1 assistant) are included in the prompt.
 
     Returns:
         Answer string; config RAG_NO_INFORMATION_IN_DOCUMENT when reranking returns no chunks;

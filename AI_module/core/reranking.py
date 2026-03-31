@@ -18,6 +18,36 @@ logger = logging.getLogger(__name__)
 
 _EMPTY_RESULT: dict[str, Any] = {"chunks": []}
 
+# After sorting by score descending: drop chunks with score <= RERANK_MIN_SCORE; keep the best
+# chunk and others only if (top_score - score) <= RERANK_MAX_SCORE_GAP. Cap count at top_k.
+RERANK_MIN_SCORE: float = -2.0
+RERANK_MAX_SCORE_GAP: float = 3.0
+
+
+def _select_filtered_reranked(
+    indexed: list[tuple[int, float]],
+    top_k: int,
+) -> list[tuple[int, float]]:
+    """
+    indexed: (original_index, score) sorted by score descending.
+    Returns a sublist in the same order, at most top_k items.
+    """
+    if not indexed or top_k <= 0:
+        return []
+    top_score = indexed[0][1]
+    if top_score <= RERANK_MIN_SCORE:
+        return []
+    out: list[tuple[int, float]] = []
+    for i, score in indexed:
+        if score <= RERANK_MIN_SCORE:
+            continue
+        if top_score - score > RERANK_MAX_SCORE_GAP:
+            continue
+        out.append((i, score))
+        if len(out) >= top_k:
+            break
+    return out
+
 
 class RerankingService:
     """
@@ -45,6 +75,9 @@ class RerankingService:
         Query must be non-empty; at least one chunk must have payload with non-empty text.
         Invalid chunks are skipped. If there is no valid pair, returns {"chunks": []}.
         Scores are not returned; the top chunks and their scores are logged for analysis.
+        Chunks with score <= RERANK_MIN_SCORE (-4) are dropped. The highest-scoring chunk is kept
+        only if its score > RERANK_MIN_SCORE; additional chunks are kept if their score is within
+        RERANK_MAX_SCORE_GAP (3) of that top score. At most top_k chunks are returned.
 
         Returns:
             Dict with "chunks" (list of Chunk, ordered by relevance, vector=None).
@@ -69,12 +102,14 @@ class RerankingService:
         indexed = list(zip(valid_indices, scores))
         indexed.sort(key=lambda x: x[1], reverse=True)
 
-        top_indexed = indexed[:top_k]
+        top_indexed = _select_filtered_reranked(indexed, top_k)
+        if not top_indexed:
+            return _EMPTY_RESULT.copy()
 
         out_ids = [ids[i] for i, _ in top_indexed]
         out_metadatas = [metadatas[i] for i, _ in top_indexed]
 
-        # Log top 3 chunks + scores for analysis when behaviour is weird
+        # Log selected chunks + scores for analysis when behaviour is weird
         for rank, (i, score) in enumerate(top_indexed[:3], start=1):
             meta = metadatas[i]
             text_preview = (meta.get("text") or "")[:80].replace("\n", " ")

@@ -224,9 +224,22 @@ def get_resolved_host_port(
     host: str | None = None,
     port: int | None = None,
 ) -> tuple[str | None, int | None]:
-    """Return (host, port) that work for connecting to Qdrant (tries localhost then 127.0.0.1). (None, None) if not reachable."""
+    """Return (host, port) that work for connecting to Qdrant.
+
+    On Windows, prefer 127.0.0.1 over localhost to avoid IPv6/localhost resolution issues.
+    Returns (None, None) if not reachable.
+    """
     h = (host or QDRANT_HOST or "").strip() or "localhost"
     p = port if port is not None else QDRANT_PORT
+    # Prefer IPv4 loopback when caller uses localhost (common on Windows).
+    if h == "localhost":
+        try:
+            from qdrant_client import QdrantClient
+            c = QdrantClient(host="127.0.0.1", port=p)
+            c.get_collections()
+            return ("127.0.0.1", p)
+        except Exception:
+            pass
     try:
         from qdrant_client import QdrantClient
         c = QdrantClient(host=h, port=p)

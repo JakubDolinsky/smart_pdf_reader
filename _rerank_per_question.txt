@@ -1,0 +1,161 @@
+﻿YES n= 89 min -9.9022 median 4.9849 max 9.5075
+NO  n= 61 min -10.6536 median -1.3932 max 7.0882
+YES scores < 0: 13
+NO  scores > 3: 13
+T=0.0: FP=22 FN=13
+T=1.0: FP=18 FN=18
+T=2.0: FP=15 FN=23
+T=3.0: FP=13 FN=27
+T=4.0: FP=10 FN=36
+T=5.0: FP=3 FN=45
+--- per question ---
+ 1 | Where is Slovakia located?
+     YES: r1=7.9184, r2=5.3680, r3=5.2517
+     NO:  
+ 2 | Which countries border Slovakia?
+     YES: r1=5.8821, r2=5.3395
+     NO:  r3=4.7266
+ 3 | What is the capital of Slovakia?
+     YES: r1=6.2574, r2=5.2209
+     NO:  r3=2.3271
+ 4 | What is the population of Slovakia?
+     YES: r1=7.5481, r2=5.9848, r3=5.5946
+     NO:  
+ 5 | What currency is used in Slovakia?
+     YES: r1=8.3070, r3=2.7351
+     NO:  r2=3.9840
+ 6 | What is the official language of Slovakia?
+     YES: r1=8.1528, r2=6.6031
+     NO:  r3=0.3972
+ 7 | What type of government does Slovakia have?
+     YES: r1=7.1671, r2=6.0554, r3=4.3644
+     NO:  
+ 8 | What time zone is Slovakia in?
+     YES: r1=7.8931, r2=3.4792
+     NO:  r3=-2.5612
+ 9 | What is the area of Slovakia?
+     YES: r1=6.8388
+     NO:  r2=6.4677, r3=4.7297
+10 | What is the international dialing code of Slovakia?
+     YES: r2=-0.1456
+     NO:  r1=0.1543, r3=-3.2197
+11 | What is the largest ethnic minority in Slovakia?
+     YES: r1=3.7921, r2=1.0385
+     NO:  r3=-0.2139
+12 | What percentage of the population are Slovaks?
+     YES: r2=6.8078, r3=3.6739
+     NO:  r1=7.0882
+13 | What languages are spoken besides Slovak?
+     YES: r1=6.3472, r2=0.5919
+     NO:  r3=-0.8242
+14 | How many Slovaks live abroad?
+     YES: r1=9.5075
+     NO:  r2=3.6425, r3=0.6772
+15 | Which country has the largest Slovak diaspora?
+     YES: r1=3.0734, r2=2.4715, r3=0.9585
+     NO:  
+16 | What is the most common religion in Slovakia?
+     YES: r1=4.8107
+     NO:  r2=-0.9313, r3=-1.6971
+17 | What percentage of the population is Catholic?
+     YES: r1=2.9916
+     NO:  r2=-9.2515, r3=-9.5243
+18 | How many Jews live in Slovakia today according to the text?
+     YES: r1=6.2608, r2=1.7821
+     NO:  r3=-0.3540
+19 | Who is the head of state of Slovakia?
+     YES: r1=8.4389, r2=5.7558, r3=4.7978
+     NO:  
+20 | How is the president elected?
+     YES: r1=-1.4372, r2=-4.5601, r3=-6.3205
+     NO:  
+21 | Who holds the main executive power in the country?
+     YES: r1=-1.3787
+     NO:  r2=-5.2089, r3=-8.3967
+22 | How is the parliament elected?
+     YES: r1=-3.5858
+     NO:  r2=-5.5728, r3=-7.8264
+23 | How many members does the Slovak parliament have?
+     YES: r1=4.1031, r2=0.7872
+     NO:  r3=-0.2401
+24 | What are the main industries in Slovakia?
+     YES: r1=8.0253
+     NO:  r2=1.0184, r3=-0.3880
+25 | Why is Slovakia significant in the automotive industry?
+     YES: r1=4.7960
+     NO:  r2=-3.3940, r3=-4.6832
+26 | Which international organizations is Slovakia a member of?
+     YES: r1=6.8135, r2=5.0200, r3=3.3557
+     NO:  
+27 | What are typical shop opening hours in Slovakia?
+     YES: r1=8.9272
+     NO:  r2=-3.3241, r3=-4.5842
+28 | Is bargaining common in Slovakia?
+     YES: 
+     NO:  r1=-6.4824, r2=-7.2298, r3=-7.7661
+29 | What types of public transport are available?
+     YES: r1=-0.7775
+     NO:  r2=-10.5569, r3=-10.5982
+30 | Do students get discounts on transport?
+     YES: r1=3.3140
+     NO:  r2=-9.2563, r3=-10.6536
+31 | How important is punctuality in Slovak culture?
+     YES: 
+     NO:  r1=-3.0607, r2=-3.3602, r3=-4.7417
+32 | What are the four seasons like in Slovakia?
+     YES: r1=8.6137, r2=6.0413, r3=4.9849
+     NO:  
+33 | What are typical summer temperatures?
+     YES: r2=-2.5163, r3=-2.8974
+     NO:  r1=-1.6720
+34 | What are winters like in Slovakia?
+     YES: r1=6.1314, r2=5.4139, r3=1.9852
+     NO:  
+35 | What factors influence SlovakiaΓÇÖs climate?
+     YES: r1=6.9095, r2=0.6209
+     NO:  r3=-0.2086
+36 | Where is the highest point in Slovakia?
+     YES: r1=6.0803
+     NO:  r2=4.8412, r3=4.1263
+37 | What is the lowest point in Slovakia?
+     YES: r1=7.1670
+     NO:  r2=4.9504, r3=1.2460
+38 | What percentage of Slovakia is covered by forests?
+     YES: r1=4.6660, r2=4.4673
+     NO:  r3=2.8893
+39 | How many national parks are there in Slovakia?
+     YES: r1=8.4945, r2=5.4218
+     NO:  r3=-0.7064
+40 | What are the longest rivers in Slovakia?
+     YES: r1=8.0750
+     NO:  r2=4.3645, r3=0.0560
+41 | Who were the earliest historically significant inhabitants of SlovakiaΓÇª
+     YES: r1=6.0308
+     NO:  r2=4.6173, r3=3.8394
+42 | What was SamoΓÇÖs Empire?
+     YES: 
+     NO:  r1=-9.3242, r2=-9.4264, r3=-9.6260
+43 | When was Great Moravia established?
+     YES: r1=6.2475, r2=3.6116
+     NO:  r3=-6.4364
+44 | Who brought Christianity to the territory of Slovakia?
+     YES: r1=3.4613, r2=3.3423, r3=0.8967
+     NO:  
+45 | What happened after the fall of Great Moravia?
+     YES: r1=1.0765, r2=-1.1515
+     NO:  r3=-2.3353
+46 | What was the impact of the Ottoman Empire on Slovakia?
+     YES: r1=1.9285
+     NO:  r2=-1.3932, r3=-1.8225
+47 | What did the codification of the Slovak language mean?
+     YES: r1=5.6526, r2=5.2613, r3=5.0242
+     NO:  
+48 | Who was ─╜udov├¡t ┼át├║r and what did he do?
+     YES: r1=-8.7255, r2=-8.8148, r3=-9.9022
+     NO:  
+49 | When was Czechoslovakia formed?
+     YES: r1=4.0996, r2=2.9240
+     NO:  r3=1.8343
+50 | When did Slovakia become an independent state?
+     YES: r1=9.2885, r2=7.2252
+     NO:  r3=6.7414

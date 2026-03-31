@@ -118,7 +118,7 @@ def test_answer_question_full_flow_returns_llm_answer():
 
 
 def test_answer_question_passes_history_to_chatter():
-    """When history is passed, it is forwarded to llm_chatter.chat(..., history=history)."""
+    """Without reference words in query, history passed to llm_chatter is empty."""
     mock_embed = MagicMock()
     mock_embed.embed_query.return_value = [0.0] * 384
     mock_db = MagicMock()
@@ -145,7 +145,7 @@ def test_answer_question_passes_history_to_chatter():
     assert result == "Answer with history."
     mock_chatter.chat.assert_called_once()
     call_kw = mock_chatter.chat.call_args[1]
-    assert call_kw.get("history") == history[-2:]
+    assert call_kw.get("history") == []
 
 
 def test_answer_question_calls_search_with_custom_top_k():
@@ -205,12 +205,21 @@ def test_answer_question_strips_question_whitespace():
     assert mock_chatter.chat.call_args[0][1] == "What is it?"
 
 
-def test_answer_question_with_reference_word_calls_rewriter_and_embeds_rewritten():
-    """Reference-word questions use rewriter + prior Q/A; embed_query receives rewritten text only."""
-    mock_rewriter = MagicMock()
-    mock_rewriter.rewrite.return_value = "What about Paris as the capital of France?"
+def test_answer_question_embeds_current_question_with_context_from_history():
+    """Embedding input is current question plus Context block with user + reduced assistant content."""
     mock_embed = MagicMock()
-    mock_embed.embed_query.return_value = [0.0] * 384
+    query_vec = [0.0] * 384
+    sent1 = [1.0, 0.0]
+    sent2 = [0.8, 0.2]
+    sent3 = [0.6, 0.4]
+    sent4 = [0.0, 1.0]
+    # First call: embedding query; then four sentence embeddings for assistant sentence scoring;
+    # last call: final merged query embedding used for vector search.
+    mock_embed.embed_query.side_effect = [
+        query_vec,  # assistant ranking: query
+        sent1, sent2, sent3, sent4,  # assistant sentences
+        query_vec,  # final merged embedding
+    ]
     mock_db = MagicMock()
     mock_db.search_similar.return_value = {"chunks": [_chunk("c1", "Some text.")]}
     mock_reranker = MagicMock()
@@ -218,9 +227,12 @@ def test_answer_question_with_reference_word_calls_rewriter_and_embeds_rewritten
     mock_chatter = MagicMock()
     mock_chatter.chat.return_value = "Answer."
 
-    history_reversed = [
-        {"role": "assistant", "content": "Paris is the capital of France."},
+    history = [
         {"role": "user", "content": "What is the capital?"},
+        {
+            "role": "assistant",
+            "content": "Paris is the capital. It is in Europe. It has the Eiffel Tower. Bananas are yellow.",
+        },
     ]
     answer_question(
         "What about that?",
@@ -228,17 +240,18 @@ def test_answer_question_with_reference_word_calls_rewriter_and_embeds_rewritten
         db_manager=mock_db,
         reranking_service=mock_reranker,
         llm_chatter=mock_chatter,
-        history_last_two_messages_reversed=history_reversed,
-        rewriter_client=mock_rewriter,
+        history=history,
     )
-    mock_rewriter.rewrite.assert_called_once()
-    mock_embed.embed_query.assert_called_once_with(
-        "What about Paris as the capital of France?"
-    )
+    assert mock_embed.embed_query.call_count == 6
+    final_embed_input = mock_embed.embed_query.call_args_list[-1].args[0]
+    assert final_embed_input.startswith("What about that?\n\nContext:\n")
+    assert "user: What is the capital?" in final_embed_input
+    assert "assistant: Paris is the capital. It is in Europe. It has the Eiffel Tower." in final_embed_input
+    assert "Bananas are yellow." not in final_embed_input
 
 
 def test_answer_question_history_last_two_reversed_used_for_llm_chronological():
-    """When history_last_two_messages_reversed is passed, chatter receives chronological (reversed) list."""
+    """Without reference words in query, provided reversed history is ignored for LLM prompt history."""
     mock_embed = MagicMock()
     mock_embed.embed_query.return_value = [0.0] * 384
     mock_db = MagicMock()
@@ -250,9 +263,9 @@ def test_answer_question_history_last_two_reversed_used_for_llm_chronological():
 
     # First = last message (most recent), so chronological for LLM = [oldest, ..., newest]
     history_reversed = [
-        {"role": "assistant", "content": "Second answer."},
+        {"role": "assistant", "content": "Second answer. More detail here."},
         {"role": "user", "content": "Second?"},
-        {"role": "assistant", "content": "First answer."},
+        {"role": "assistant", "content": "First answer. More detail there."},
         {"role": "user", "content": "First?"},
     ]
     answer_question(
@@ -264,8 +277,7 @@ def test_answer_question_history_last_two_reversed_used_for_llm_chronological():
         history_last_two_messages_reversed=history_reversed,
     )
     call_kw = mock_chatter.chat.call_args[1]
-    expected_chronological = list(reversed(history_reversed))
-    assert call_kw.get("history") == expected_chronological
+    assert call_kw.get("history") == []
 
 
 if __name__ == "__main__":

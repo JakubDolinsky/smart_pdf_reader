@@ -33,7 +33,7 @@ def _make_pdf_with_chapters(
     try:
         import fitz
     except ImportError:
-        pytest.skip("PyMuPDF (fitz) required for integration tests")
+        raise AssertionError("PyMuPDF (fitz) is required for chunking integration tests. Install it (pip install pymupdf).")
     if body_words is None:
         body_words = ["word"] * 400
     doc = fitz.open()
@@ -58,7 +58,7 @@ def _make_single_block_pdf(path: Path, words: list[str], fontsize: float = 11.0)
     try:
         import fitz
     except ImportError:
-        pytest.skip("PyMuPDF (fitz) required for integration tests")
+        raise AssertionError("PyMuPDF (fitz) is required for chunking integration tests. Install it (pip install pymupdf).")
     text = " ".join(words)
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)
@@ -72,7 +72,10 @@ def _get_tokenizer_or_skip():
     try:
         return get_embedding_tokenizer()
     except ImportError:
-        pytest.skip("transformers/config required for integration tests")
+        raise AssertionError(
+            "transformers (and tokenizer config) is required for chunking integration tests. "
+            "Install it (pip install transformers)."
+        )
 
 
 def _normalize_whitespace(text: str) -> str:

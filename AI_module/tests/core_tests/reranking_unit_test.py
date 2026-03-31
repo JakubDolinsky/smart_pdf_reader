@@ -236,8 +236,8 @@ def test_rerank_accepts_dbmanager_chunks_output(mock_reranking_client):
     assert "scores" not in result
 
 
-def test_rerank_keeps_all_scores_no_min_threshold(mock_reranking_client):
-    """Without a min score, low-scoring chunks still participate; top_k is by descending score."""
+def test_rerank_keeps_chunks_within_gap_and_above_min(mock_reranking_client):
+    """Chunks with score > -4 and within 3 of the top score are kept (sorted descending)."""
     mock_reranking_client.score_pairs.return_value = [0.65, 0.85]
     chunks_in = _dbmanager_result(["low", "high"], ["Low.", "High."])
     service = RerankingService(client=mock_reranking_client)
@@ -254,6 +254,49 @@ def test_rerank_low_scores_still_return_top_k(mock_reranking_client):
     result = service.rerank("q", chunks_in, top_k=3)
     assert len(result["chunks"]) == 3
     assert result["chunks"][0].id == "c" and result["chunks"][1].id == "b"
+
+
+def test_rerank_returns_empty_when_best_score_not_above_min(mock_reranking_client):
+    """If the top score is <= -4, no chunks are returned."""
+    mock_reranking_client.score_pairs.return_value = [-4.5, -6.0]
+    chunks_in = _dbmanager_result(["a", "b"], ["A.", "B."])
+    service = RerankingService(client=mock_reranking_client)
+    assert service.rerank("q", chunks_in, top_k=3) == _EMPTY
+
+
+def test_rerank_drops_chunks_at_or_below_min_score(mock_reranking_client):
+    """Chunks with score <= -4 are excluded even if within score gap of the top."""
+    mock_reranking_client.score_pairs.return_value = [-3.0, -4.5, -2.0]
+    chunks_in = _dbmanager_result(["a", "b", "c"], ["A.", "B.", "C."])
+    service = RerankingService(client=mock_reranking_client)
+    result = service.rerank("q", chunks_in, top_k=5)
+    # Sorted: c -2.0, a -3.0, b -4.5 -> top -2.0; a gap 1.0 OK; b <= -4 dropped
+    assert len(result["chunks"]) == 2
+    assert result["chunks"][0].id == "c"
+    assert result["chunks"][1].id == "a"
+
+
+def test_rerank_drops_chunks_outside_score_gap(mock_reranking_client):
+    """Only the top chunk is kept when the next-best is more than 3 below the top."""
+    mock_reranking_client.score_pairs.return_value = [1.0, 5.0, 3.0]
+    chunks_in = _dbmanager_result(["a", "b", "c"], ["A.", "B.", "C."])
+    service = RerankingService(client=mock_reranking_client)
+    result = service.rerank("q", chunks_in, top_k=5)
+    # Sorted: b 5.0, c 3.0 (gap 3.0 OK), a 1.0 (gap 4.0 > 2) excluded
+    assert len(result["chunks"]) == 2
+    assert result["chunks"][0].id == "b"
+    assert result["chunks"][1].id == "c"
+
+
+def test_rerank_gap_boundary_includes_chunk_exactly_two_below_top(mock_reranking_client):
+    """Chunk with score exactly (top - 2) is included: gap 2 is allowed."""
+    mock_reranking_client.score_pairs.return_value = [3.0, 5.0, 1.0]
+    chunks_in = _dbmanager_result(["a", "b", "c"], ["A.", "B.", "C."])
+    service = RerankingService(client=mock_reranking_client)
+    result = service.rerank("q", chunks_in, top_k=5)
+    assert len(result["chunks"]) == 2
+    assert result["chunks"][0].id == "b"
+    assert result["chunks"][1].id == "a"
 
 
 if __name__ == "__main__":
