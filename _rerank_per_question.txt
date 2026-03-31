@@ -1,7 +1,12 @@
-﻿YES n= 89 min -9.9022 median 4.9849 max 9.5075
+YES n= 89 min -9.9022 median 4.9849 max 9.5075
 NO  n= 61 min -10.6536 median -1.3932 max 7.0882
 YES scores < 0: 13
 NO  scores > 3: 13
+# Threshold sweep (per chunk): FP = NO-labeled chunks with score>=T; FN = YES-labeled chunks with score<T
+T=-4.0: FP=41 FN=5
+T=-3.0: FP=36 FN=6
+T=-2.0: FP=34 FN=8
+T=-1.0: FP=30 FN=11
 T=0.0: FP=22 FN=13
 T=1.0: FP=18 FN=18
 T=2.0: FP=15 FN=23
