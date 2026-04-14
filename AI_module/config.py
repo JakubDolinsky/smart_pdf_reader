@@ -3,6 +3,7 @@ Common configuration for AI_module (RAG application: infra layer, core, etc.).
 """
 
 import logging
+import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -198,7 +199,7 @@ llm_model_prompt_template: str = PHI_MINI_LLM_PROMPT_TEMPLATE
 # Ollama model tag for LlmClient (e.g. ``LLM_OLLAMA_MODEL_PHI_MINI`` or ``LLM_OLLAMA_MODEL_LATEST``).
 llm_model: str = LLM_OLLAMA_MODEL_PHI_MINI
 
-LLM_OLLAMA_HOST: str = "http://localhost:11434"
+LLM_OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 LLM_MAX_NEW_TOKENS: int = 170
 
 # Reference words used to decide whether prompt history is needed.
@@ -246,8 +247,8 @@ OLLAMA_SERVE_READY_TIMEOUT: float = 15.0
 # ---------------------------------------------------------------------------
 #storage type can be server or memory
 STORAGE_TYPE: str = "server"
-QDRANT_LOCAL_HOST: str | None = "localhost"
-QDRANT_LOCAL_PORT: int = 6333
+QDRANT_LOCAL_HOST: str | None = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_LOCAL_PORT: int = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_PERSIST_DIRECTORY: str | None = "data/qdrant"
 AUTO_START_QDRANT_SERVER: bool = True
 AUTO_START_DOCKER: bool = True

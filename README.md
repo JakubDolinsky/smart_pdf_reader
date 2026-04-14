@@ -149,14 +149,104 @@ prompt rules. It is better for interactive presentation of RAG system as the por
 
 ### Prerequisites (summary)
 
+- **Git**: required to clone the repo.
 - **Python**: install deps from `requirements.txt` in a venv.
-- **Docker**: used by `AI_module/dev_tools/start_app_db.bat` to run Qdrant.
+- **Docker Desktop + Docker Compose**: for running the full test stack on a clean machine.
 - **Qdrant**: vector DB at `http://localhost:6333`.
 - **Ollama**: local LLM server. Pull the configured model (see `AI_module/config.py` → `llm_model`, default `phi3:mini`).
 - **SQL Server**: used by `SmartPdfReaderApi` (see `SmartPdfReaderApi/SmartPdfReaderApi/appsettings.json`).
 - **.NET SDKs**:
   - `SmartPdfReaderApi` targets **.NET 8**
   - `DesktopClient` targets **.NET 9 (Windows/WPF)**
+
+### Clean environment setup (Docker-first, simplest)
+
+This section is meant for a **new / clean Windows machine**. It runs the **backend** in Docker Compose:
+- Qdrant
+- SQL Server
+- RAG FastAPI
+- SmartPdfReaderApi
+- Ollama (optional but recommended for a fully dockerized setup)
+
+DesktopClient (WPF) runs on Windows and connects to `http://localhost:5000`.
+
+#### 1) Install prerequisites (Chocolatey)
+
+PowerShell as Administrator:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+choco install -y git docker-desktop ollama dotnet-9.0-sdk
+```
+
+Notes:
+- Restart your terminal after installs.
+- Start Docker Desktop once (it must be running for `docker compose` to work).
+
+#### 2) Clone the repo
+
+```powershell
+git clone <YOUR_REPO_URL_HERE>
+cd smart_pdf_reader
+```
+
+#### 3) Start the backend (docker compose + models + DB migrations)
+
+This script is the “one command” bootstrap for a clean machine:
+
+```powershell
+.\docker_bootstrap_clean.ps1 -WithOllamaInDocker -RunIngestion:$false
+```
+
+What it does:
+- Builds Docker images
+- Downloads **embedding** + **reranker** models (container-side)
+- Starts Qdrant + SQL + RAG API + SmartPdfReaderApi (+ Ollama when enabled)
+- Pulls **LLM** images into Ollama (see `docker-compose.yml` → `ollama_pull`)
+- Applies SQL migrations
+
+If you change the default LLM, update **both** `llm_model` in `AI_module/config.py` and the default in **`docker-compose.yml`** (`ollama_pull` uses `ollama pull ${OLLAMA_LLM_MODEL:-phi3:mini}` — override with env `OLLAMA_LLM_MODEL` if you only need a different pull without editing the file).
+
+After it finishes:
+- RAG FastAPI docs: `http://localhost:8000/docs`
+- SmartPdfReaderApi Swagger: `http://localhost:5000/swagger`
+
+#### 4) Run ingestion (after PDFs are available)
+
+1. Put PDFs into `AI_module/data/pdfs`
+2. Run ingestion (uses the dockerized RAG container):
+
+```powershell
+docker compose run --rm rag python -m AI_module.application.ingestion.ingestion
+```
+
+#### 5) Run the application (DesktopClient on Windows)
+
+Option A (recommended): open the solution in Visual Studio and run **DesktopClient**.
+
+Option B (CLI build/run):
+
+```powershell
+dotnet build .\DesktopClient\DesktopClient\DesktopClient.csproj -c Release
+Start-Process .\DesktopClient\DesktopClient\bin\Release\net9.0-windows\DesktopClient.exe
+```
+
+#### 6) Stop the whole application (Docker stack)
+
+Stop containers (keeps DB/model volumes):
+
+```powershell
+docker compose down
+```
+
+Stop containers and also remove volumes (this deletes SQL/Qdrant data + downloaded models in Docker volumes):
+
+```powershell
+docker compose down -v
+```
 
 ### One-time preparation (recommended)
 
