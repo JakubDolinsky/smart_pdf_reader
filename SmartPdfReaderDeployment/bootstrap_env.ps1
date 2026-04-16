@@ -7,7 +7,11 @@ function Fail([string]$msg) {
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-  Fail "Run PowerShell as Administrator (required for WSL/Chocolatey installs)."
+  Fail "Run PowerShell as Administrator (required for WSL and Chocolatey package installs)."
+}
+
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+  Fail "Chocolatey is not installed. Install it first (README section 9, step A: Before cloning), then run this script again."
 }
 
 $restartNeeded = $false
@@ -21,16 +25,7 @@ if ($LASTEXITCODE -ne 0) {
   $restartNeeded = $true
 }
 
-# --- Chocolatey ---
-if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-  Write-Host "Installing Chocolatey..."
-  Set-ExecutionPolicy Bypass -Scope Process -Force
-  [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-  Invoke-Expression ((New-Object System.Net.WebClient).DownloadString("https://community.chocolatey.org/install.ps1"))
-  $restartNeeded = $true
-}
-
-# --- Git, Docker Desktop, .NET SDK ---
+# --- Git, Docker Desktop, .NET SDK (Chocolatey; install Chocolatey itself is README step A) ---
 Write-Host "Installing / updating Git, Docker Desktop, .NET 9 SDK via Chocolatey..."
 & choco install -y git docker-desktop dotnet-9.0-sdk
 if ($LASTEXITCODE -ne 0) { Fail "choco install failed." }
@@ -38,6 +33,6 @@ if ($LASTEXITCODE -ne 0) { Fail "choco install failed." }
 Write-Host ""
 Write-Host "RESTART REQUIRED"
 if ($restartNeeded) {
-  Write-Host "(Reboot after first-time WSL or Chocolatey install, then continue deployment.)"
+  Write-Host "(Reboot after first-time WSL install, then continue deployment.)"
 }
 exit 0

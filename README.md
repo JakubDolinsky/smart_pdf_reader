@@ -185,7 +185,7 @@ cd smart_pdf_reader
 
 ### 0) `check_prereqs.ps1`
 
-From the **repository root**. Verifies Windows version, virtualization, outbound HTTPS, and admin elevation. On failure it prints **Deployment failed:** plus what to fix, then exits with code **1**.
+From the **repository root**. Verifies Windows version, outbound HTTPS, and admin elevation. On failure it prints **Deployment failed:** plus what to fix, then exits with code **1**.
 
 ```powershell
 .\SmartPdfReaderDeployment\check_prereqs.ps1
@@ -193,7 +193,7 @@ From the **repository root**. Verifies Windows version, virtualization, outbound
 
 ### 1) `bootstrap_env.ps1`
 
-Run from the **repository root**. Ensures **WSL** (if needed), **Chocolatey** and **Git** (if still missing), then **Docker Desktop** and **.NET 9 SDK** via Chocolatey. At the end it always prints **RESTART REQUIRED**; reboot after a first-time WSL or Chocolatey install before continuing.
+Run from the **repository root**. Requires **Chocolatey** already installed (step **A** above). Ensures **WSL** (if needed), then installs or updates **Git**, **Docker Desktop**, and **.NET 9 SDK** via Chocolatey. At the end it always prints **RESTART REQUIRED**; reboot after a first-time **WSL** install before continuing.
 
 ```powershell
 .\SmartPdfReaderDeployment\bootstrap_env.ps1
@@ -206,6 +206,9 @@ Starts **Docker Desktop** if the engine is not up, waits until Docker responds, 
 ```powershell
 .\SmartPdfReaderDeployment\start_docker.ps1
 ```
+If Docker fails to start, open Docker Desktop once manually and complete initial setup.
+
+Docker requires virtualization. If Docker fails to start, enable virtualization in BIOS (Intel VT-x / AMD-V).
 
 ### 3) `start_backend.ps1` (Docker Compose backend + model prep)
 
@@ -230,7 +233,7 @@ Service URLs:
 - RAG FastAPI: `http://localhost:8000/docs`
 - SmartPdfReaderApi: `http://localhost:5000/swagger`
 
-### 4) `verify_deployment.ps1`
+### 4) `verify_deployment.ps1`(optional)
 
 Smoke-checks **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** (HTTP). Prints per-service status, then **ALL SYSTEMS OK** or **FAIL** with a short reason.
 
@@ -285,6 +288,26 @@ Tail recent compose logs (all services or one service name). Use this when any s
 ```
 
 The repo may still contain legacy `.bat` files under `AI_api` / `AI_module`; they are **not** part of this pipeline.
+
+### 9) `uninstall_all.ps1` (full teardown toward pre-deployment or for cleanup after testing deployment)
+
+Run **PowerShell as Administrator** from the **repository root**. This script removes **Docker stack + volumes** for this project, then uninstalls **Docker Desktop**, **Git**, and **.NET 9 SDK** via Chocolatey (if present), and **removes Chocolatey** by deleting its install folder. **WSL is not removed.**
+
+```powershell
+.\SmartPdfReaderDeployment\uninstall_all.ps1
+```
+
+What it does:
+- stops **DesktopClient** (if running)
+- `docker compose down -v` for this project (containers and volumes: SQL, Qdrant, Ollama, HF cache, models)
+- stops Docker Desktop processes; uninstalls **docker-desktop** via Chocolatey if available
+- uninstalls **git** and **dotnet-9.0-sdk** via Chocolatey if available
+- deletes **`C:\ProgramData\chocolatey`** (Chocolatey removal)
+
+Limitations:
+- Tools installed **without** Chocolatey (winget, manual installers) may remain — check **Settings → Apps**.
+- Deleting the Chocolatey folder does not always clean **PATH**; fix **Environment Variables** if `choco` still appears.
+- A **reboot** after uninstall is recommended before redeploying.
 
 13. Future improvements:
 Upgrading HW to GPU would definitely help to improve performance of application. Better HW 

@@ -20,19 +20,6 @@ if ($major -lt 10) {
   Fail "Windows 10 or newer is required (found version $($os.Version))."
 }
 
-# --- Virtualization ---
-$proc = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($proc -and ($null -ne $proc.VirtualizationFirmwareEnabled) -and (-not $proc.VirtualizationFirmwareEnabled)) {
-  Fail "Hardware virtualization is disabled in BIOS/UEFI (firmware)."
-}
-$sys = systeminfo 2>$null
-if ($sys) {
-  $virtLine = $sys | Select-String -Pattern "Virtualization Enabled In Firmware"
-  if ($virtLine -and ($virtLine.Line -match ":\s*No\s*$")) {
-    Fail "Hardware virtualization is disabled in BIOS/UEFI (systeminfo)."
-  }
-}
-
 # --- Internet ---
 try {
   if (-not (Test-NetConnection -ComputerName "www.microsoft.com" -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue)) {
