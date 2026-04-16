@@ -154,7 +154,6 @@ The `SmartPdfReaderDeployment\*.ps1` scripts live **inside** the repository, so 
 ### Requirements (MUST HAVE)
 
 - Windows 10 or 11
-- Virtualization enabled in firmware (BIOS/UEFI)
 - Administrator rights (for Chocolatey, WSL, and the deployment scripts)
 - Internet (large model downloads)
 
