@@ -145,204 +145,152 @@ Other metric obseved in the application is latency. The main bottleneck is llm m
 it was 2-5 min. Although phi3:mini is less precise and has more inaccuracies such as ingoring appending citations or incomplete citations sometimes or not following
 prompt rules. It is better for interactive presentation of RAG system as the portfolio project. For better performance change to GPU HW would improve latency dramatically.
 
-9.Set up and run
+9. Set up and run (Windows, short pipeline)
 
-### Prerequisites (summary)
+The `SmartPdfReaderDeployment\*.ps1` scripts live **inside** the repository, so you need **Git** (and a way to install it) **before** you can clone and run them.
 
-- **Git**: required to clone the repo.
-- **Python**: install deps from `requirements.txt` in a venv.
-- **Docker Desktop + Docker Compose**: for running the full test stack on a clean machine.
-- **Qdrant**: vector DB at `http://localhost:6333`.
-- **Ollama**: local LLM server. Pull the configured model (see `AI_module/config.py` → `llm_model`, default `phi3:mini`).
-- **SQL Server**: used by `SmartPdfReaderApi` (see `SmartPdfReaderApi/SmartPdfReaderApi/appsettings.json`).
-- **.NET SDKs**:
-  - `SmartPdfReaderApi` targets **.NET 8**
-  - `DesktopClient` targets **.NET 9 (Windows/WPF)**
+**Important:** follow the steps **in order**. Skipping steps or changing the order can cause deployment to fail (missing prerequisites, missing tools, Docker not ready, models not prepared, or DB migrations failing).
 
-### Clean environment setup (Docker-first, simplest)
+### Requirements (MUST HAVE)
 
-This section is meant for a **new / clean Windows machine**. It runs the **backend** in Docker Compose:
-- Qdrant
-- SQL Server
-- RAG FastAPI
-- SmartPdfReaderApi
-- Ollama (optional but recommended for a fully dockerized setup)
+- Windows 10 or 11
+- Virtualization enabled in firmware (BIOS/UEFI)
+- Administrator rights (for Chocolatey, WSL, and the deployment scripts)
+- Internet (large model downloads)
 
-DesktopClient (WPF) runs on Windows and connects to `http://localhost:5000`.
+### Before cloning (clean machine)
 
-#### 1) Install prerequisites (Chocolatey)
+Use **PowerShell as Administrator**. This phase only prepares **Chocolatey** (optional installer) and **Git** so you can clone; you **cannot** call the repo scripts until the next section is done.
 
-PowerShell as Administrator:
+**A) Chocolatey** — install only if `choco` is not already available:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-
-choco install -y git docker-desktop ollama dotnet-9.0-sdk
+Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 ```
 
-Notes:
-- Restart your terminal after installs.
-- Start Docker Desktop once (it must be running for `docker compose` to work).
-
-#### 2) Clone the repo
+**B) Git** — install if `git` is missing (after Chocolatey, or use another installer you prefer):
 
 ```powershell
-git clone <YOUR_REPO_URL_HERE>
+choco install -y git
+```
+
+**C) Clone the repository** and go to the repo root (all script paths below assume you are here):
+
+```powershell
+git clone https://github.com/JakubDolinsky/smart_pdf_reader.git
 cd smart_pdf_reader
 ```
 
-#### 3) Start the backend (docker compose + models + DB migrations)
+### 0) `check_prereqs.ps1`
 
-This script is the “one command” bootstrap for a clean machine:
-
-```powershell
-.\docker_bootstrap_clean.ps1 -WithOllamaInDocker -RunIngestion:$false
-```
-
-What it does:
-- Builds Docker images
-- Downloads **embedding** + **reranker** models (container-side)
-- Starts Qdrant + SQL + RAG API + SmartPdfReaderApi (+ Ollama when enabled)
-- Pulls **LLM** images into Ollama (see `docker-compose.yml` → `ollama_pull`)
-- Applies SQL migrations
-
-If you change the default LLM, update **both** `llm_model` in `AI_module/config.py` and the default in **`docker-compose.yml`** (`ollama_pull` uses `ollama pull ${OLLAMA_LLM_MODEL:-phi3:mini}` — override with env `OLLAMA_LLM_MODEL` if you only need a different pull without editing the file).
-
-After it finishes:
-- RAG FastAPI docs: `http://localhost:8000/docs`
-- SmartPdfReaderApi Swagger: `http://localhost:5000/swagger`
-
-#### 4) Run ingestion (after PDFs are available)
-
-1. Put PDFs into `AI_module/data/pdfs`
-2. Run ingestion (uses the dockerized RAG container):
+From the **repository root**. Verifies Windows version, virtualization, outbound HTTPS, and admin elevation. On failure it prints **Deployment failed:** plus what to fix, then exits with code **1**.
 
 ```powershell
-docker compose run --rm rag python -m AI_module.application.ingestion.ingestion
+.\SmartPdfReaderDeployment\check_prereqs.ps1
 ```
 
-#### 5) Run the application (DesktopClient on Windows)
+### 1) `bootstrap_env.ps1`
 
-Option A (recommended): open the solution in Visual Studio and run **DesktopClient**.
-
-Option B (CLI build/run):
+Run from the **repository root**. Ensures **WSL** (if needed), **Chocolatey** and **Git** (if still missing), then **Docker Desktop** and **.NET 9 SDK** via Chocolatey. At the end it always prints **RESTART REQUIRED**; reboot after a first-time WSL or Chocolatey install before continuing.
 
 ```powershell
-dotnet build .\DesktopClient\DesktopClient\DesktopClient.csproj -c Release
-Start-Process .\DesktopClient\DesktopClient\bin\Release\net9.0-windows\DesktopClient.exe
+.\SmartPdfReaderDeployment\bootstrap_env.ps1
 ```
 
-#### 6) Stop the whole application (Docker stack)
+### 2) `start_docker.ps1`
 
-Stop containers (keeps DB/model volumes):
+Starts **Docker Desktop** if the engine is not up, waits until Docker responds, then runs **`docker run --rm hello-world`**. On failure it stops with a clear error and exits **1**.
 
 ```powershell
-docker compose down
+.\SmartPdfReaderDeployment\start_docker.ps1
 ```
 
-Stop containers and also remove volumes (this deletes SQL/Qdrant data + downloaded models in Docker volumes):
+### 3) `start_backend.ps1` (Docker Compose backend + model prep)
+
+Brings up **Qdrant**, **SQL Server**, and **Ollama**, waits for SQL to listen, runs one-shot setup (**model_prep**, **ollama_pull**, **api_migrations**), then starts **RAG** and **SmartPdfReaderApi** with **`docker compose up -d --build`**. Finally it waits until **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** respond. On success it prints **BACKEND READY**.
+
+Set a strong SQL Server password first (required by SQL Server policy):
 
 ```powershell
-docker compose down -v
+$env:MSSQL_SA_PASSWORD = Read-Host "Enter strong SQL password"
+.\SmartPdfReaderDeployment\start_backend.ps1
 ```
 
-### One-time preparation (recommended)
+If you are re-running deployment on a machine that already has the SQL volume (`mssql_data`) from a previous run, the `sa` password inside that volume may still be the **old** one. In that case either:
 
-- **Embedding model offline snapshot** (so embedding tests can run offline):
-  - Run once while online: `AI_module\dev_tools\download_embedding_model.bat`
-  - This downloads the Hugging Face model snapshot into `AI_module/data/models/...` and the app/tests will use the local folder when present.
+- reuse the original password, or
+- if you do **not** remember the original password, you must reset volumes (this destroys SQL data): `docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v`.
 
-- **SQL DB migrations**
-  - The EF Core migrations live in `SmartPdfReaderApi/Data/Migrations`.
-  - Apply them using the provided script:
-    - `SmartPdfReaderApi\Data\apply_migrations.bat`
-  - This uses `dotnet ef` under the hood and reads the connection string from `SmartPdfReaderApi/SmartPdfReaderApi/appsettings.json`.
+Compose file: `SmartPdfReaderDeployment/docker-compose.yml`. RAG uses in-compose Ollama via `OLLAMA_HOST=http://ollama:11434` by default. If you change the default LLM in `AI_module/config.py` (`llm_model`), set host env **`OLLAMA_LLM_MODEL`** when running setup so `ollama_pull` matches (default `phi3:mini`).
 
-### PDF ingestion (load PDFs into Qdrant)
+Service URLs:
 
-1. Put PDFs into `AI_module/data/pdfs` (config: `PDF_INPUT_DIR` in `AI_module/config.py`).
-2. Start Qdrant.
-3. Run ingestion:
-   - `AI_module\dev_tools\run_ingestion.bat`
+- RAG FastAPI: `http://localhost:8000/docs`
+- SmartPdfReaderApi: `http://localhost:5000/swagger`
 
-### Run variants
+### 4) `verify_deployment.ps1`
 
-#### Variant 1 — Start Qdrant and RAG separately (plus run .NET API manually)
-
-1. Start Qdrant: `AI_module\dev_tools\start_app_db.bat`
-2. Start RAG FastAPI: `AI_api\run_rag.bat` (docs: `http://localhost:8000/docs`)
-3. Start .NET REST API: `dotnet run --project "SmartPdfReaderApi/SmartPdfReaderApi/SmartPdfReaderApi.csproj"`
-4. Run ingestion (optional): `AI_module\dev_tools\run_ingestion.bat`
-5. Run DesktopClient (WPF, Windows).
-
-Stop:
-- RAG: `AI_api\stop_rag.bat`
-- Qdrant: `AI_module\dev_tools\stop_app_db.bat`
-- .NET API: stop the `dotnet run` process
-
-#### Variant 2 — Start core stack (Windows convenience script)
-
-From repo root:
-- `start_core_app.bat` (starts Qdrant, RAG FastAPI, and SmartPdfReaderApi)
-
-Stop:
-- `stop_core_app.bat`
-
-#### Variant 3 — Manual / cross-platform
-
-1. Qdrant: `docker run -p 6333:6333 qdrant/qdrant`
-2. RAG: `uvicorn AI_api.main:app --host 0.0.0.0 --port 8000`
-3. .NET API: `dotnet run --project SmartPdfReaderApi/SmartPdfReaderApi/SmartPdfReaderApi.csproj`
-
-### Ports (defaults)
-
-- Qdrant: `http://localhost:6333`
-- RAG FastAPI: `http://localhost:8000`
-- SmartPdfReaderApi: `http://localhost:5000`
-
-10. Regenerating desktop clinet in case of changes in REST API:
-### Regenerating DesktopClient Swagger Client (NSwag)
-
-DesktopClient includes a generated HTTP client and DTOs for `SmartPdfReaderApi`. They are generated from Swagger at `http://localhost:5000/swagger/v1/swagger.json`.
-
-### Prerequisites
-
-1. Start `SmartPdfReaderApi` in Development (so Swagger is enabled):
-   - `dotnet run --project "SmartPdfReaderApi/SmartPdfReaderApi/SmartPdfReaderApi.csproj" --launch-profile "SmartPdfReaderApi"`
-2. Verify Swagger is reachable:
-   - `http://localhost:5000/swagger/v1/swagger.json`
-
-### Install NSwag (once)
+Smoke-checks **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** (HTTP). Prints per-service status, then **ALL SYSTEMS OK** or **FAIL** with a short reason.
 
 ```powershell
-dotnet tool install --global nswag.consolecore
+.\SmartPdfReaderDeployment\verify_deployment.ps1
 ```
 
-### Regenerate client + DTOs
+### 5) Ingestion (optional timing, required before first real use)
+
+Ingestion is **separate from deployment**: run it whenever you need to (re)load PDFs into Qdrant, but **before** the first meaningful chat session.
+
+1. Put PDFs in `AI_module/data/pdfs`
+2. Run:
 
 ```powershell
-nswag openapi2csclient `
-  /input:"http://localhost:5000/swagger/v1/swagger.json" `
-  /output:"DesktopClient/DesktopClient/Client/SmartPdfReaderApiClient.cs" `
-  /namespace:"DesktopClient.Client" `
-  /className:"SmartPdfReaderApiClient" `
-  /GenerateClientInterfaces:true `
-  /InjectHttpClient:true `
-  /DisposeHttpClient:false `
-  /GenerateContractsOutput:true `
-  /ContractsNamespace:"DesktopClient.ModelsDTO" `
-  /ContractsOutput:"DesktopClient/DesktopClient/ModelsDTO/SmartPdfReaderApiDtos.cs" `
-  /GenerateDtoTypes:true `
-  /JsonLibrary:SystemTextJson
+.\SmartPdfReaderDeployment\run_ingestion.ps1
 ```
 
-Notes:
-1. `DesktopClient/DesktopClient/ModelsDTO/ChatDtoMapper.cs` is handwritten and should not be regenerated/overwritten.
-2. Generated DTOs are in `DesktopClient.ModelsDTO`, and the client is in `DesktopClient.Client`.
+The script waits until the ingestion container finishes.
 
-10.Future improvements:
-Upgrading HW to GPU would definitely help to improve performance of application. Better HW would allow use better llm and also embeding models, so the latency would be shorter
-and system would be more precise. It maybe allow add rewrite function using llm to get better results in case of question referencing to the previous messages. Current chunking
- heuristics also could be improved, which finally could lead to more clear and shorter prompts and therefore shorter models processing and more precise results and less halucinations. 
+### 6) `run_desktop.ps1`
+
+Builds **DesktopClient** (Release) if needed and starts the WPF client (chat UI).
+
+```powershell
+.\SmartPdfReaderDeployment\run_desktop.ps1
+```
+
+### 7) `stop_all.ps1`
+
+Runs **`docker compose down`** and stops the **DesktopClient** process.
+
+```powershell
+.\SmartPdfReaderDeployment\stop_all.ps1
+```
+
+To also remove volumes (SQL/Qdrant/Ollama/HF cache):
+
+```powershell
+docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v
+```
+
+### 8) `logs.ps1`
+
+Tail recent compose logs (all services or one service name). Use this when any step fails.
+
+```powershell
+.\SmartPdfReaderDeployment\logs.ps1
+.\SmartPdfReaderDeployment\logs.ps1 rag
+.\SmartPdfReaderDeployment\logs.ps1 smartpdfreaderapi
+.\SmartPdfReaderDeployment\logs.ps1 ollama
+```
+
+The repo may still contain legacy `.bat` files under `AI_api` / `AI_module`; they are **not** part of this pipeline.
+
+13. Future improvements:
+Upgrading HW to GPU would definitely help to improve performance of application. Better HW 
+would allow use better llm and also embeding models, so the latency would be shorter
+and system would be more precise. It maybe allow add rewrite function using llm to get 
+better results in case of question referencing to the previous messages. Current chunking
+ heuristics also could be improved, which finally could lead to more clear and shorter 
+ prompts and therefore shorter models processing and more precise results and less 
+ halucinations. 
