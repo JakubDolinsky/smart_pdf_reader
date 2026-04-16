@@ -12,23 +12,6 @@ if (-not $env:MSSQL_SA_PASSWORD) {
 $env:OLLAMA_HOST = "http://ollama:11434"
 $composeFile = Join-Path $repoRoot "SmartPdfReaderDeployment/docker-compose.yml"
 
-Write-Host "Starting data stores and Ollama..."
-Invoke-Compose $repoRoot @("up", "-d", "--build", "qdrant", "mssql", "ollama")
-
-Write-Host "Waiting for SQL Server to accept connections..."
-$sqlReady = $false
-for ($i = 0; $i -lt 40; $i++) {
-  if (Test-NetConnection -ComputerName "127.0.0.1" -Port 1433 -InformationLevel Quiet -WarningAction SilentlyContinue) {
-    $sqlReady = $true
-    break
-  }
-  Start-Sleep -Seconds 3
-}
-if (-not $sqlReady) {
-  Write-Error "SQL Server did not become reachable on port 1433. Check logs: .\SmartPdfReaderDeployment\logs.ps1 mssql"
-  exit 1
-}
-
 function Invoke-SqlCmd {
   param(
     [Parameter(Mandatory = $true)][string]$Password,
@@ -55,22 +38,35 @@ function Test-SaLogin {
   return (Invoke-SqlCmd -Password $Password -Query "SELECT 1;")
 }
 
-# Password drift handling for existing mssql_data volume:
-# - The DB is persisted in the mssql_data volume. The sa password is "locked in" on first init.
-# - If you forgot the original password, the only recovery is to delete the volume and reinitialize (DESTROYS SQL data).
-$loginOk = Test-SaLogin -Password $env:MSSQL_SA_PASSWORD
+Write-Host "Starting data stores and Ollama..."
+Invoke-Compose $repoRoot @("up", "-d", "--build", "qdrant", "mssql", "ollama")
 
-if (-not $loginOk) {
-  Write-Host ""
-  Write-Error "SQL login failed for user 'sa' with the provided MSSQL_SA_PASSWORD."
-  Write-Host "This usually means the SQL Server volume was initialized earlier with a different password."
-  Write-Host ""
-  Write-Host "Fix:"
-  Write-Host "  - Re-run with the ORIGINAL password, OR reset volumes to create an empty DB (DESTROYS SQL data):"
-  Write-Host "      docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v"
-  Write-Host ""
+Write-Host "Waiting for SQL Server to be ready..."
+$maxAttempts = 30
+$attempt = 0
+$ready = $false
+
+while (-not $ready -and $attempt -lt $maxAttempts) {
+  if (Test-SaLogin -Password $env:MSSQL_SA_PASSWORD) {
+    $ready = $true
+    break
+  }
+  Start-Sleep -Seconds 2
+  $attempt++
+}
+
+if (-not $ready) {
+  $portOpen = Test-NetConnection -ComputerName "127.0.0.1" -Port 1433 -InformationLevel Quiet -WarningAction SilentlyContinue
+  if ($portOpen) {
+    Write-Host ""
+    Write-Error "SQL Server did not accept 'sa' login in time (port 1433 is open). Wrong MSSQL_SA_PASSWORD for this SQL volume is likely. Re-run with the original password or reset volumes: docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v"
+  } else {
+    Write-Error "SQL Server did not become ready in time. Check logs: .\SmartPdfReaderDeployment\logs.ps1 mssql"
+  }
   exit 1
 }
+
+Write-Host "SQL Server is ready."
 
 Write-Host "Preparing models and database (one-shot containers)..."
 Invoke-Compose $repoRoot @("--profile", "setup", "run", "--rm", "model_prep")
