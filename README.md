@@ -178,6 +178,7 @@ choco install -y git
 **C) Clone the repository** and go to the repo root (all script paths below assume you are here):
 
 ```powershell
+cd $HOME
 git clone https://github.com/JakubDolinsky/smart_pdf_reader.git
 cd smart_pdf_reader
 ```
