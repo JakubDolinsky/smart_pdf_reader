@@ -156,6 +156,7 @@ The `SmartPdfReaderDeployment\*.ps1` scripts live **inside** the repository, so 
 - Windows 10 or 11
 - Administrator rights (for Chocolatey, WSL, and the deployment scripts)
 - Internet (large model downloads)
+- **Virtualization** enabled for Docker (BIOS/UEFI **VT-x / AMD-V**, plus Windows features such as **Virtual Machine Platform** / **Hyper-V** where Docker prompts for them — see Docker Desktop docs if setup fails)
 
 ### Before cloning (clean machine)
 
@@ -212,7 +213,13 @@ Docker requires virtualization. If Docker fails to start, enable virtualization 
 
 ### 3) `start_backend.ps1` (Docker Compose backend + model prep)
 
-Brings up **Qdrant**, **SQL Server**, and **Ollama**, waits for SQL to listen, runs one-shot setup (**model_prep**, **ollama_pull**, **api_migrations**), then starts **RAG** and **SmartPdfReaderApi** with **`docker compose up -d --build`**. Finally it waits until **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** respond. On success it prints **BACKEND READY**.
+Brings up **Qdrant**, **SQL Server**, and **Ollama**, waits until **`sqlcmd`** inside the **mssql** container can log in as `sa` (avoids racing the DB engine on slow disks), runs one-shot setup (**model_prep**, **ollama_pull**), then starts **RAG** and **SmartPdfReaderApi** with **`docker compose up -d --build`**. **SmartPdfReaderApi applies EF Core migrations automatically on startup**, so there is no separate migration step. Finally it waits until **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** respond. On success it prints **BACKEND READY**.
+
+**First run can take a long time** (often **15–45+ minutes**): images build, embedding/reranker models download, Ollama pulls the LLM. The script waits up to **45 minutes** by default; to extend, before running:
+
+```powershell
+$env:BACKEND_HEALTH_TIMEOUT_MINUTES = "90"
+```
 
 Set a strong SQL Server password first (required by SQL Server policy):
 
@@ -226,14 +233,28 @@ If you are re-running deployment on a machine that already has the SQL volume (`
 - reuse the original password, or
 - if you do **not** remember the original password, you must reset volumes (this destroys SQL data): `docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v`.
 
+#### Starting the backend again (any time after the first deployment)
+
+From the **repository root**, use the **same** `MSSQL_SA_PASSWORD` as the first run that created the SQL volume, then:
+
+```powershell
+$env:MSSQL_SA_PASSWORD = 'Your_original_strong_password'
+.\SmartPdfReaderDeployment\start_backend.ps1
+```
+
 Compose file: `SmartPdfReaderDeployment/docker-compose.yml`. RAG uses in-compose Ollama via `OLLAMA_HOST=http://ollama:11434` by default. If you change the default LLM in `AI_module/config.py` (`llm_model`), set host env **`OLLAMA_LLM_MODEL`** when running setup so `ollama_pull` matches (default `phi3:mini`).
+
+**CPU vs GPU note (most PCs = CPU-only):**
+- This project is configured to run on **CPU-only** machines by default.
+- The Docker pipeline pins a **CPU-only PyTorch** build to avoid downloading huge CUDA/GPU packages during `pip install`.
+- If you have an NVIDIA GPU and want GPU acceleration, you can switch to a CUDA-enabled PyTorch build (advanced setup: NVIDIA drivers + Docker GPU runtime). See the notes in `requirements.txt` (search for “CPU-only default”).
 
 Service URLs:
 
 - RAG FastAPI: `http://localhost:8000/docs`
 - SmartPdfReaderApi: `http://localhost:5000/swagger`
 
-### 4) `verify_deployment.ps1`(optional)
+### 4) `verify_deployment.ps1` (optional)
 
 Smoke-checks **Qdrant**, **RAG API**, **SmartPdf API**, and **Ollama** (HTTP). Prints per-service status, then **ALL SYSTEMS OK** or **FAIL** with a short reason.
 

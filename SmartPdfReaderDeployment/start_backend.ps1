@@ -8,6 +8,10 @@ if (-not $env:MSSQL_SA_PASSWORD) {
   Write-Error "Set MSSQL_SA_PASSWORD first, e.g. `$env:MSSQL_SA_PASSWORD = 'Your_strong_password123'"
   exit 1
 }
+if ($env:MSSQL_SA_PASSWORD.Length -lt 8) {
+  Write-Error "MSSQL_SA_PASSWORD must be at least 8 characters (SQL Server policy). Use a strong password."
+  exit 1
+}
 
 $env:OLLAMA_HOST = "http://ollama:11434"
 $composeFile = Join-Path $repoRoot "SmartPdfReaderDeployment/docker-compose.yml"
@@ -25,7 +29,12 @@ function Invoke-SqlCmd {
   )
 
   foreach ($sqlcmd in $cmds) {
-    & docker compose -f $composeFile exec -T mssql $sqlcmd -S localhost -U sa -P $Password -C -b -Q $Query 2>$null
+    # docker/sqlcmd often prints transient readiness errors to stderr while SQL is starting.
+    # With $ErrorActionPreference='Stop', PowerShell would treat native stderr as a terminating error.
+    & {
+      $ErrorActionPreference = "Continue"
+      & docker compose -f $composeFile exec -T mssql $sqlcmd -S localhost -U sa -P $Password -C -b -Q $Query 2>$null | Out-Null
+    }
     if ($LASTEXITCODE -eq 0) {
       return $true
     }
@@ -70,8 +79,22 @@ Write-Host "SQL Server is ready."
 
 Write-Host "Preparing models and database (one-shot containers)..."
 Invoke-Compose $repoRoot @("--profile", "setup", "run", "--rm", "model_prep")
+
+Write-Host "Waiting for Ollama server to be ready (before model pull)..."
+$ollamaReady = $false
+for ($i = 0; $i -lt 60; $i++) {
+  try {
+    $r = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3
+    if ($r.StatusCode -eq 200) { $ollamaReady = $true; break }
+  } catch { }
+  Start-Sleep -Seconds 2
+}
+if (-not $ollamaReady) {
+  Write-Error "Ollama did not become ready in time. Check logs: .\SmartPdfReaderDeployment\logs.ps1 ollama"
+  exit 1
+}
+
 Invoke-Compose $repoRoot @("--profile", "setup", "run", "--rm", "ollama_pull")
-Invoke-Compose $repoRoot @("--profile", "setup", "run", "--rm", "api_migrations")
 
 Write-Host "Starting RAG API and SmartPdfReaderApi..."
 Invoke-Compose $repoRoot @("up", "-d", "--build", "rag", "smartpdfreaderapi")
@@ -83,8 +106,15 @@ function Test-Url([string]$url) {
   } catch { return $false }
 }
 
-Write-Host "Waiting for services to become healthy..."
-$deadline = (Get-Date).AddMinutes(5)
+Write-Host "Waiting for services to become healthy (first run can take 15-30+ minutes while images build and models download)..."
+$healthTimeoutMin = 45
+if ($env:BACKEND_HEALTH_TIMEOUT_MINUTES) {
+  $parsed = 0
+  if ([int]::TryParse($env:BACKEND_HEALTH_TIMEOUT_MINUTES, [ref]$parsed) -and $parsed -gt 0) {
+    $healthTimeoutMin = $parsed
+  }
+}
+$deadline = (Get-Date).AddMinutes($healthTimeoutMin)
 while ((Get-Date) -lt $deadline) {
   $q = Test-Url "http://localhost:6333/healthz"
   $r = Test-Url "http://localhost:8000/docs"
@@ -97,5 +127,5 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 3
 }
 
-Write-Error "Backend did not become ready in time. Run .\SmartPdfReaderDeployment\logs.ps1 for details."
+Write-Error ("Backend did not become ready within {0} minutes. Increase BACKEND_HEALTH_TIMEOUT_MINUTES if needed. Run .\\SmartPdfReaderDeployment\\logs.ps1 for details." -f $healthTimeoutMin)
 exit 1

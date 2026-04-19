@@ -4,6 +4,7 @@ WORKDIR /src
 # Copy csproj files first (better caching)
 COPY SmartPdfReaderApi/SmartPdfReaderApi/SmartPdfReaderApi.csproj SmartPdfReaderApi/SmartPdfReaderApi/
 COPY SmartPdfReaderApi/Data/Data.csproj SmartPdfReaderApi/Data/
+COPY SmartPdfReaderApi/Service/Service.csproj SmartPdfReaderApi/Service/
 RUN dotnet restore SmartPdfReaderApi/SmartPdfReaderApi/SmartPdfReaderApi.csproj
 
 # Copy everything else and publish

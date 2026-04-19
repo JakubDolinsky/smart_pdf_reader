@@ -29,6 +29,8 @@ services:
     image: ollama/ollama:latest
     depends_on:
       - ollama
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
     volumes:
       - ollama_data:/root/.ollama
     entrypoint: ["/bin/sh", "-c", "ollama pull ${OLLAMA_LLM_MODEL:-phi3:mini}"]
@@ -79,27 +81,10 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:5000
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=ChatHistoryDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Your_strong_password123};TrustServerCertificate=True;MultipleActiveResultSets=true;"
+      ConnectionStrings__DefaultConnection: "Server=tcp:mssql,1433;Database=ChatHistoryDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Your_strong_password123};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true;"
       ChatService__FastApiBaseUrl: "http://rag:8000"
     ports:
       - "5000:5000"
-
-  # One-shot (profile setup): EF Core migrations against container SQL Server.
-  api_migrations:
-    profiles: ["setup"]
-    image: mcr.microsoft.com/dotnet/sdk:8.0
-    working_dir: /src
-    depends_on:
-      - mssql
-    environment:
-      ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=ChatHistoryDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Your_strong_password123};TrustServerCertificate=True;MultipleActiveResultSets=true;"
-    volumes:
-      - ../:/src
-    command: >
-      bash -lc "dotnet tool install --global dotnet-ef --version 8.* &&
-      export PATH=\"$$PATH:/root/.dotnet/tools\" &&
-      cd SmartPdfReaderApi &&
-      dotnet ef database update --project Data --startup-project SmartPdfReaderApi/SmartPdfReaderApi.csproj"
 
 volumes:
   qdrant_data:

@@ -7,6 +7,17 @@ qdrant-client>=1.7.0,<2.0.0
 # Embeddings (multilingual-e5-small)
 sentence-transformers>=2.2.0,<3.0.0
 
+# IMPORTANT (Docker / CPU-only default):
+# `sentence-transformers` depends on PyTorch. If we let pip auto-resolve torch in Docker,
+# it may pull very large CUDA/GPU wheels (cuda_toolkit, nvidia_cudnn, ...) which makes
+# first-time deployment slow and unreliable on common non-GPU PCs.
+#
+# Default: CPU-only torch for Linux containers (used by docker-compose pipeline).
+# Advanced: if you have an NVIDIA GPU + proper Docker GPU runtime, you can override to
+# a CUDA build by changing these lines or using a GPU-specific build strategy.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0+cpu ; platform_system == "Linux" and platform_machine == "x86_64"
+
 # LLM (Mistral 7B Instruct via Ollama)
 ollama>=0.3.0
 

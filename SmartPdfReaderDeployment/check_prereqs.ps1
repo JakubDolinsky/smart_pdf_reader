@@ -29,5 +29,5 @@ try {
   Fail "No network connectivity: $($_.Exception.Message)"
 }
 
-Write-Host "Prerequisites OK (Windows build $build, admin, virtualization check done, network reachable)."
+Write-Host "Prerequisites OK (Windows build $build, admin, outbound HTTPS reachable)."
 exit 0

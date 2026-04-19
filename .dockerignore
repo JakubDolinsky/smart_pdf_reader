@@ -1,0 +1,32 @@
+.git
+.gitignore
+.vs
+.vscode
+.idea
+**/.DS_Store
+
+# Build outputs
+**/bin/
+**/obj/
+**/TestResults/
+**/*.user
+**/*.suo
+
+# Python caches / venvs
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+
+# Local runtime/data (keep docker volumes for models instead)
+AI_module/data/pdfs/
+AI_module/data/models/
+
+# Cursor/IDE artifacts
+.cursor/
+

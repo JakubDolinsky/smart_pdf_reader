@@ -73,6 +73,22 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Apply EF Core migrations automatically in containerized deployments.
+// This removes the need for a separate "migration runner" container and makes first-time setup
+// more robust for non-developer machines.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ChatHistoryDbContext>();
+    db.Database.Migrate();
+    Log.Information("Database migration check completed.");
+}
+catch (Exception ex)
+{
+    Log.Error(ex, "Database migration failed.");
+    throw;
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

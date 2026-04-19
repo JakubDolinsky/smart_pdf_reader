@@ -16,12 +16,18 @@ if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
 
 $restartNeeded = $false
 
-# --- WSL ---
+# --- WSL (platform only where supported; avoids forcing a default Linux distro) ---
 & wsl --status *> $null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host "Installing WSL..."
-  & wsl --install
-  & wsl --set-default-version 2
+  Write-Host "Installing WSL platform..."
+  # --no-distribution: WSL without a default distro (Windows 11+); reduces interactive prompts.
+  & wsl --install --no-distribution
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "wsl --install --no-distribution failed; trying wsl --install ..."
+    & wsl --install
+  }
+  # May fail until reboot; non-fatal — user reboots before Docker/WSL2 steps.
+  & wsl --set-default-version 2 2>$null
   $restartNeeded = $true
 }
 
