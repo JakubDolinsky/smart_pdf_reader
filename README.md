@@ -207,6 +207,7 @@ Run from the **repository root**. Requires **Chocolatey** already installed (ste
 Starts **Docker Desktop** if the engine is not up, waits until Docker responds, then runs **`docker run --rm hello-world`**. On failure it stops with a clear error and exits **1**.
 
 ```powershell
+cd $HOME\smart_pdf_reader
 .\SmartPdfReaderDeployment\start_docker.ps1
 ```
 If Docker fails to start, open Docker Desktop once manually and complete initial setup.
@@ -284,6 +285,18 @@ Builds **DesktopClient** (Release) if needed and starts the WPF client (chat UI)
 ```powershell
 .\SmartPdfReaderDeployment\run_desktop.ps1
 ```
+If the response after sending the question in the chat is 500 Internal error, the most common issue is little memory allocated for docker. Then it is needed to update file
+.wslconfig or create new if it does not exist. It should be placed into Users/<username folder>. Example of .wslconfig is in SmartPdfReaderDeployment folder (.wslconfig) this
+is example for PC with 8GB RAM. 
+
+a) create or update .wslconfig
+b) turn the docker off
+c) run  
+wsl --shutdown in powershell
+d) when call 
+wsl -e sh -lc "free -h
+there should be new updated values
+e)run start_backend.ps1 again and test the whole application using desktop client
 
 ### 7) `stop_all.ps1`
 
