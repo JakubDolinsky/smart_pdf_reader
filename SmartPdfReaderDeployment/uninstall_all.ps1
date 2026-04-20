@@ -42,7 +42,13 @@ Write-Host "[2/5] docker compose down -v (project)..."
 Push-Location $repoRoot
 try {
   if (Get-Command docker -ErrorAction SilentlyContinue) {
-    & docker compose -f $script:COMPOSE_FILE down -v 2>$null
+    & {
+      $ErrorActionPreference = "Continue"
+      & docker compose -f $script:COMPOSE_FILE down -v
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning "docker compose down -v failed (exit=$LASTEXITCODE). Continuing uninstall. If Docker Desktop is stopped, this is expected."
+      }
+    }
   }
 } finally {
   Pop-Location
