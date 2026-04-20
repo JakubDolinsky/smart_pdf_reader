@@ -50,9 +50,56 @@ if (-not $wslCmd) {
 }
 
 # --- Git, Docker Desktop, .NET SDK (Chocolatey; install Chocolatey itself is README step A) ---
-Write-Host "Installing / updating Git, Docker Desktop, .NET 9 SDK via Chocolatey..."
-& choco install -y git docker-desktop dotnet-9.0-sdk
-if ($LASTEXITCODE -ne 0) { Fail "choco install failed." }
+Write-Host "Installing / updating Git, Docker Desktop, .NET 9 SDK..."
+
+function Ensure-ChocoCommunitySource {
+  # Some environments have Chocolatey installed but the community feed disabled/missing.
+  $sourceList = & choco source list 2>$null
+  if (-not $sourceList) { return }
+
+  $hasCommunity = ($sourceList | Select-String -SimpleMatch "https://community.chocolatey.org/api/v2/" -Quiet)
+  if (-not $hasCommunity) {
+    Write-Host "Adding Chocolatey Community source..."
+    & choco source add -n="chocolatey-community" -s "https://community.chocolatey.org/api/v2/" | Out-Host
+  }
+
+  # Ensure any source pointing at community is enabled.
+  $communityNames = @()
+  foreach ($line in $sourceList) {
+    if ($line -match '^\s*\S+\s+https://community\.chocolatey\.org/api/v2/') {
+      $communityNames += ($line -split '\s+')[0]
+    }
+  }
+  $communityNames += "chocolatey-community"
+  $communityNames = $communityNames | Select-Object -Unique
+  foreach ($n in $communityNames) {
+    & choco source enable -n="$n" 2>$null | Out-Null
+  }
+}
+
+function Install-WithChoco([string[]]$packages) {
+  Ensure-ChocoCommunitySource
+  & choco install -y @packages
+  return ($LASTEXITCODE -eq 0)
+}
+
+Write-Host "Installing Git + .NET 9 SDK via Chocolatey..."
+if (-not (Install-WithChoco @("git","dotnet-9.0-sdk"))) {
+  Fail "choco install failed for git/dotnet-9.0-sdk."
+}
+
+Write-Host "Installing Docker Desktop..."
+if (-not (Install-WithChoco @("docker-desktop"))) {
+  Write-Host "Chocolatey could not install 'docker-desktop' (package not found or source unavailable). Trying winget..."
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    & winget install --id Docker.DockerDesktop -e --source winget
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Failed to install Docker Desktop via winget as well."
+    }
+  } else {
+    Fail "Chocolatey could not find 'docker-desktop' and winget is not available. Install Docker Desktop manually, then rerun: https://www.docker.com/products/docker-desktop/"
+  }
+}
 
 Write-Host ""
 Write-Host "RESTART REQUIRED"
