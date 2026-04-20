@@ -16,7 +16,7 @@ function Require-Admin {
 Require-Admin
 
 Write-Host ""
-Write-Host "FULL UNINSTALL — pre-deployment state" -ForegroundColor Red
+Write-Host "FULL UNINSTALL - pre-deployment state" -ForegroundColor Red
 Write-Host "This will:" -ForegroundColor Yellow
 Write-Host "  - Stop DesktopClient and remove this project's Docker stack and volumes"
 Write-Host "  - Stop Docker Desktop and uninstall Docker Desktop (if installed via Chocolatey)"
@@ -66,7 +66,7 @@ if (Get-Command choco -ErrorAction SilentlyContinue) {
   & choco uninstall -y git 2>$null
   & choco uninstall -y dotnet-9.0-sdk 2>$null
 } else {
-  Write-Host "[4/5] Chocolatey not found — skip choco uninstall of git/dotnet (remove manually if needed)."
+  Write-Host "[4/5] Chocolatey not found - skip choco uninstall of git/dotnet (remove manually if needed)."
 }
 
 # --- 4) Chocolatey itself (WSL left untouched) ---
