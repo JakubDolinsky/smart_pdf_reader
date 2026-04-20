@@ -17,18 +17,36 @@ if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
 $restartNeeded = $false
 
 # --- WSL (platform only where supported; avoids forcing a default Linux distro) ---
-& wsl --status *> $null
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "Installing WSL platform..."
-  # --no-distribution: WSL without a default distro (Windows 11+); reduces interactive prompts.
-  & wsl --install --no-distribution
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "wsl --install --no-distribution failed; trying wsl --install ..."
-    & wsl --install
-  }
-  # May fail until reboot; non-fatal — user reboots before Docker/WSL2 steps.
-  & wsl --set-default-version 2 2>$null
+$wslCmd = Get-Command wsl.exe -ErrorAction SilentlyContinue
+if (-not $wslCmd) {
+  Write-Host "WSL command not found. Enabling Windows optional features for WSL2..."
+  & dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart | Out-Host
+  & dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart | Out-Host
   $restartNeeded = $true
+} else {
+  $wslStatusExit = 1
+  try {
+    & wsl --status *> $null
+    $wslStatusExit = $LASTEXITCODE
+  } catch {
+    $wslStatusExit = 1
+  }
+
+  if ($wslStatusExit -ne 0) {
+    Write-Host "Installing WSL platform..."
+    # --no-distribution: WSL without a default distro (Windows 11+); reduces interactive prompts.
+    & {
+      $ErrorActionPreference = "Continue"
+      & wsl --install --no-distribution
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "wsl --install --no-distribution failed; trying wsl --install ..."
+        & wsl --install
+      }
+      # May fail until reboot; non-fatal — user reboots before Docker/WSL2 steps.
+      & wsl --set-default-version 2 2>$null
+    }
+    $restartNeeded = $true
+  }
 }
 
 # --- Git, Docker Desktop, .NET SDK (Chocolatey; install Chocolatey itself is README step A) ---

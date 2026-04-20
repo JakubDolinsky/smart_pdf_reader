@@ -181,14 +181,16 @@ choco install -y git
 ```powershell
 cd $HOME
 git clone https://github.com/JakubDolinsky/smart_pdf_reader.git
-cd smart_pdf_reader
 ```
-
+Close powershell.
 ### 0) `check_prereqs.ps1`
 
 From the **repository root**. Verifies Windows version, outbound HTTPS, and admin elevation. On failure it prints **Deployment failed:** plus what to fix, then exits with code **1**.
 
+Open powershell.
+
 ```powershell
+cd $HOME\smart_pdf_reader
 .\SmartPdfReaderDeployment\check_prereqs.ps1
 ```
 
