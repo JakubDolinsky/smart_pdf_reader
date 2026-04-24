@@ -184,7 +184,7 @@ git clone https://github.com/JakubDolinsky/smart_pdf_reader.git
 ```
 Close powershell.
 ### 0) `check_prereqs.ps1`
-
+Firstly ensure if the current windows security policy allow running powershell scripts.
 From the **repository root**. Verifies Windows version, outbound HTTPS, and admin elevation. On failure it prints **Deployment failed:** plus what to fix, then exits with code **1**.
 
 Open powershell.
@@ -206,11 +206,12 @@ Run from the **repository root**. Requires **Chocolatey** already installed (ste
 
 Starts **Docker Desktop** if the engine is not up, waits until Docker responds, then runs **`docker run --rm hello-world`**. On failure it stops with a clear error and exits **1**.
 
+Run newly installed docker desktop manually.
+
 ```powershell
 cd $HOME\smart_pdf_reader
 .\SmartPdfReaderDeployment\start_docker.ps1
 ```
-If Docker fails to start, open Docker Desktop once manually and complete initial setup.
 
 Docker requires virtualization. If Docker fails to start, enable virtualization in BIOS (Intel VT-x / AMD-V).
 
@@ -237,7 +238,6 @@ If you are re-running deployment on a machine that already has the SQL volume (`
 - if you do **not** remember the original password, you must reset volumes (this destroys SQL data): `docker compose -f SmartPdfReaderDeployment/docker-compose.yml down -v`.
 
 #### Starting the backend again (any time after the first deployment)
-
 From the **repository root**, use the **same** `MSSQL_SA_PASSWORD` as the first run that created the SQL volume, then:
 
 ```powershell
@@ -292,11 +292,20 @@ is example for PC with 8GB RAM.
 a) create or update .wslconfig
 b) turn the docker off
 c) run  
+```powershell
 wsl --shutdown in powershell
-d) when call 
-wsl -e sh -lc "free -h
+```
+d) then call 
+```powershell
+wsl -e sh -lc "free -h"
+```
 there should be new updated values
 e)run start_backend.ps1 again and test the whole application using desktop client
+```powershell
+cd $HOME\smart_pdf_reader
+$env:MSSQL_SA_PASSWORD = 'Your_original_strong_password'
+.\SmartPdfReaderDeployment\start_backend.ps1
+```
 
 ### 7) `stop_all.ps1`
 
