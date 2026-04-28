@@ -75,7 +75,7 @@ class RerankingService:
         Query must be non-empty; at least one chunk must have payload with non-empty text.
         Invalid chunks are skipped. If there is no valid pair, returns {"chunks": []}.
         Scores are not returned; the top chunks and their scores are logged for analysis.
-        Chunks with score <= RERANK_MIN_SCORE (-4) are dropped. The highest-scoring chunk is kept
+        Chunks with score <= RERANK_MIN_SCORE (-2) are dropped. The highest-scoring chunk is kept
         only if its score > RERANK_MIN_SCORE; additional chunks are kept if their score is within
         RERANK_MAX_SCORE_GAP (3) of that top score. At most top_k chunks are returned.
 
