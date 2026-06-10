@@ -2,7 +2,7 @@
 
 from .db_health import check_db_ready, is_qdrant_server_running
 from .llm_client import LlmClient
-from .ollama_lifecycle import (
+from AI_module.tests.ollama_lifecycle import (
     is_ollama_running,
     managed as ollama_managed,
     register_application_exit_handlers,

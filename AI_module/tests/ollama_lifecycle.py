@@ -1,4 +1,6 @@
 """
+THIS IMPLEMENTATION IS USED FOR TESTING PURPOSES! (DO NOT REMOVE!)
+
 Ollama server lifecycle: start and stop the Ollama server to avoid running it permanently.
 
 - Production: call start_ollama() when the application starts and register_application_exit_handlers()
